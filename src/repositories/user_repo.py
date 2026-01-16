@@ -14,7 +14,7 @@ class UserRepository:
         new_user.password = user_in.password
         try:
             self.session.add(new_user)
-            await self.session.commit()
+            await self.session.flush()
             await self.session.refresh(new_user)
         except IntegrityError:
             await self.session.rollback()
@@ -23,8 +23,8 @@ class UserRepository:
         return new_user
 
 
-    async def get_by_id(self, id: int):
-        user: UserModel = await self.session.get(UserModel, id)
+    async def get_by_id(self, user_id: int):
+        user: UserModel = await self.session.get(UserModel, user_id)
 
         if not user:
             raise UserDoesNotExistError()
@@ -40,21 +40,21 @@ class UserRepository:
         
         user.password = new_password
 
-        await self.session.commit()
+        await self.session.flush()
         await self.session.refresh(user)
 
         return user
 
 
 
-    async def delete_by_id(self, id: int):
-        user: UserModel = await self.session.get(UserModel, id)
+    async def delete_by_id(self, user_id: int):
+        user: UserModel = await self.session.get(UserModel, user_id)
         
         if not user:
             raise UserDoesNotExistError()
         try:
             await self.session.delete(user)
-            await self.session.commit()
+            await self.session.flush()
         except:
             await self.session.rollback()
             raise UserCannotBeDeletedError()
