@@ -1,4 +1,5 @@
-.env
+*.env
 .venv/
 .dockerignore
 .idea/
+__pycache__
