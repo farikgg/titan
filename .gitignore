@@ -2,3 +2,4 @@
 .venv/
 .dockerignore
 .idea/
+__pycache__
