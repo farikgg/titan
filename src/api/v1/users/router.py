@@ -20,7 +20,7 @@ async def add_user(userIn: UserSchema, session: AsyncSession = Depends(get_db)):
              "username" : new_user.username, 
              "password_hash_slice" : new_user.password_hash[:7]}
 
-@router.post('/get/{id}')
+@router.get('/{id}')
 async def get_by_id(id: int, session: AsyncSession = Depends(get_db)):
     user: UserModel = await session.get(UserModel, id)
 
@@ -57,6 +57,8 @@ async def delete_by_id(id: int, session: AsyncSession = Depends(get_db)):
     return { "id": id,
              "details" : f"User {id} deleted successfully"}
 
+
+#! delete this endpoint after password security algs are tested
 @router.post('/check_password/{id}')
 async def check_password(id: int, password: str, session: AsyncSession = Depends(get_db)):
     user: UserModel = await session.get(UserModel, id)
