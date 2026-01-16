@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     #Выполняется перед включением приложения
+    # ! переложить задачу инициализации дб на alembic
     await setup_database()
 
     yield

@@ -16,6 +16,3 @@ app = FastAPI(
     lifespan=lifespan,
 )
 app.include_router(users_router)
-
-if __name__ == "__main__":
-    uvicorn.run(app='src.app.main:app', reload=True)

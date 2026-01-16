@@ -29,6 +29,21 @@ async def get_by_id(id: int, session: AsyncSession = Depends(get_db)):
 
     return {"id": user.id, "username" : user.username}
 
+
+@router.post('/update_password/{id}')
+async def update_password(id: int, new_password: str, session: AsyncSession = Depends(get_db)):
+    user: UserModel = await session.get(UserModel, id)
+
+    if not user:
+        return HTTPException(status_code=404, detail=f"User with id {id} not found")
+    
+    user.password = new_password
+    await session.commit()
+    await session.refresh(user)
+    return { "id" : {user.id},
+             "username" : user.username }
+
+
 @router.post('/delete/{id}')
 async def delete_by_id(id: int, session: AsyncSession = Depends(get_db)):
     user: UserModel = await session.get(UserModel, id)
@@ -40,8 +55,7 @@ async def delete_by_id(id: int, session: AsyncSession = Depends(get_db)):
     await session.commit()
 
     return { "id": id,
-             "details" : f"User {user.id} deleted successfully"}
-
+             "details" : f"User {id} deleted successfully"}
 
 @router.post('/check_password/{id}')
 async def check_password(id: int, password: str, session: AsyncSession = Depends(get_db)):
