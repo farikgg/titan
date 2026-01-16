@@ -8,10 +8,9 @@ from sqlalchemy import String
 class UserModel(Base):
     __tablename__ = "users"
 
-    id:Mapped[int] = mapped_column(primary_key=True)
-    username: Mapped[str] = mapped_column(String(), nullable=False)
+    id:Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    username: Mapped[str] = mapped_column(String(), nullable=False, unique=True)
     password_hash: Mapped[str] = mapped_column(String(128),nullable=False)
-
 
 
     def set_password(self, password: str):
@@ -32,3 +31,4 @@ class UserModel(Base):
     @password.setter
     def password(self, password: str):
         self.set_password(password)
+    
