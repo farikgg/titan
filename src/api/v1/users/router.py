@@ -27,7 +27,7 @@ async def update_password(id: int, new_password: str, user_service: UserServiceD
     user = await user_service.update_user_password(id, new_password)
     return {"id": user.id, "details": f"Password for user {id} updated"}
 
-@router.post('/delete/{id}')
+@router.delete('/delete/{id}')
 async def delete_by_id(id: int, user_service: UserServiceDep):
     await user_service.delete_user(id)
     return {"id": id, "details": f"User {id} deleted successfully"}
