@@ -14,5 +14,15 @@ class UserDoesNotExistError(UserError):
 
 class UserCannotBeDeletedError(UserError):
     def __init__(self):
-        self.message = f"Cannot delete user from database"
+        self.message = f"Cannot delete user from the database."
+        super().__init__(self.message)
+
+class UserUpdateError(UserError):
+    def __init__(self):
+        self.message = f"Cannot update user in the database."
+        super().__init__(self.message)
+
+class UserCreateError(UserError):
+    def __init__(self):
+        self.message = f"Cannot create user in the database."
         super().__init__(self.message)

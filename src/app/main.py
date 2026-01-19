@@ -12,6 +12,7 @@ app = FastAPI(
     version="0.0.1",
     lifespan=lifespan,
 )
+
 app.include_router(users_router)
 
 @app.exception_handler(UserError)

@@ -1,7 +1,7 @@
 import bcrypt
 
 from src.db.initialize import Base
-from src.core.constants import build_string_of_tg_roles
+from src.core.utils import build_string_of_tg_roles
 
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy import String, CheckConstraint
@@ -29,7 +29,7 @@ class UserModel(Base):
         correct_password = self.password_hash.encode('utf-8')
         entered_password = password.encode('utf-8')
         return bcrypt.checkpw(entered_password, correct_password)
-    
+
     @property
     def password(self):
         raise AttributeError("Пароль read-only")
