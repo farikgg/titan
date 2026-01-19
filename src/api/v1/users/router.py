@@ -10,17 +10,20 @@ router = APIRouter( prefix='/users',
 
 
 @router.post('/add')
-async def add_user(user_in: UserCreateSchema, user_service: UserServiceDep):
-    user = await user_service.create_user(user_in)
+async def add_user(user_schema: UserCreateSchema, user_service: UserServiceDep):
+    user = await user_service.add_user(user_schema)
     return {
         "id": user.id,
-        "username": user.username
+        "username": user.username,
+        "role": user.role
     }
 
 @router.get('/{id}')
 async def get_by_id(id: int, user_service: UserServiceDep):
     user = await user_service.get_user(id)
-    return {"id": user.id, "username": user.username}
+    return {"id": user.id,
+            "username": user.username,
+            "role": user.role}
 
 @router.post('/update_password/{id}')
 async def update_password(id: int, new_password: str, user_service: UserServiceDep):

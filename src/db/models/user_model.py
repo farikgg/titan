@@ -1,8 +1,10 @@
-from src.db.initialize import Base
+import bcrypt
 
-import bcrypt,asyncio
+from src.db.initialize import Base
+from src.core.constants import build_string_of_tg_roles
+
 from sqlalchemy.orm import Mapped, mapped_column
-from sqlalchemy import String
+from sqlalchemy import String, CheckConstraint
 
 
 class UserModel(Base):
@@ -11,7 +13,11 @@ class UserModel(Base):
     id:Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     username: Mapped[str] = mapped_column(String(), nullable=False, unique=True)
     password_hash: Mapped[str] = mapped_column(String(128),nullable=False)
+    role: Mapped[str] = mapped_column(String(60),nullable=False)
 
+    __table_args__ = (
+        CheckConstraint(f"role in ({build_string_of_tg_roles()})"),
+    )
 
     def set_password(self, password: str):
         salt = bcrypt.gensalt()

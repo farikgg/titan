@@ -1,17 +1,20 @@
 
 from src.db.models.user_model import UserModel
 from src.schemas.user_schema import UserCreateSchema
+from src.core.exceptions import UserAlreadyExistsError, UserDoesNotExistError, UserCannotBeDeletedError
+from src.core.constants import USER_UPDATABLE_FIELDS
+
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError
-from src.core.exceptions import UserAlreadyExistsError, UserDoesNotExistError, UserCannotBeDeletedError
+
 
 class UserRepository:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
-    async def add(self, user_in: UserCreateSchema):
-        new_user = UserModel(username=user_in.username)
-        new_user.password = user_in.password
+    async def add(self, user_schema: UserCreateSchema):
+        new_user = UserModel(**user_schema.model_dump())
+        new_user.password = user_schema.password
         try:
             self.session.add(new_user)
             await self.session.flush()
@@ -21,6 +24,7 @@ class UserRepository:
             raise UserAlreadyExistsError(new_user.username)
             
         return new_user
+
 
 
     async def get_by_id(self, user_id: int):
@@ -33,15 +37,23 @@ class UserRepository:
 
 
 
-    async def update_password(self, user: UserModel, new_password: str):
-
+    async def update(self, user: UserModel, data: dict):
+        
         if not user:
             raise UserDoesNotExistError()
         
-        user.password = new_password
+        #Костыль, потому что нижняя функция не сработает с аттрибутом созданным через @property
+        password = data.pop('password', None)
+        if password:
+            user.password = password
+
+        for k, v in data.items():
+            if k in USER_UPDATABLE_FIELDS:
+                if hasattr(user, k):
+                    setattr(user, k, v)
+
 
         await self.session.flush()
-        await self.session.refresh(user)
 
         return user
 
@@ -55,7 +67,7 @@ class UserRepository:
         try:
             await self.session.delete(user)
             await self.session.flush()
-        except:
+        except Exception:
             await self.session.rollback()
             raise UserCannotBeDeletedError()
 
@@ -63,11 +75,9 @@ class UserRepository:
 
 
 
+
     async def check_password(self, user: UserModel, password: str):
-        
         if not user:
             raise UserDoesNotExistError()
-        
-        is_correct_password = user.check_password(password)
-
-        return is_correct_password
+    
+        return user.check_password(password)
