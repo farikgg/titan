@@ -3,6 +3,7 @@ from fastapi.responses import JSONResponse
 
 from src.app.lifespan import lifespan
 from src.api.v1.users.router import router as users_router
+from src.api.v1.prices.router import router as prices_router
 
 from src.core.exceptions import *
 
@@ -13,6 +14,11 @@ app = FastAPI(
     lifespan=lifespan,
 )
 app.include_router(users_router)
+app.include_router(prices_router)
+
+@app.get("/health")
+async def check_health():
+    return { "status": "ok" }
 
 @app.exception_handler(UserError)
 async def user_exception_handler(request: Request, exc: UserError):

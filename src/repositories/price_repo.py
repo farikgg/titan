@@ -1,0 +1,36 @@
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from src.db.models.price import PriceModel
+from src.schemas.price_schema import PriceCreate
+
+
+class PriceRepository:
+    async def create(self, db: AsyncSession, price_in: PriceCreate) -> PriceModel:
+        # 1. Превращаем Pydantic схему в словарь
+        data = price_in.model_dump()
+        # 2. Создаем экземпляр модели БД
+        db_obj = PriceModel(**data)
+        try:
+        # 3. Добавляем в сессию
+            db.add(db_obj)
+        # 4. Фиксируем (commit сделаем в сервисе или тут, но для простоты — тут)
+            await db.commit()
+        # 5. Обновляем объект, чтобы получить ID и updated_at из БД
+            await db.refresh(db_obj)
+            return db_obj
+        except IntegrityError:
+            await db.rollback()
+            raise
+
+    async def get_all(self, db: AsyncSession) -> list[PriceModel]:
+        # Делаем select(PriceModel) и возвращаем результаты
+        query = select(PriceModel).order_by(PriceModel.updated_at.desc())
+        result = await db.execute(query)
+        return list(result.scalars().all())
+
+    async def get_by_art(self, db: AsyncSession, art_id: str) -> PriceModel:
+        query = select(PriceModel).where(PriceModel.art == art_id)
+        result = await db.execute(query)
+        return result.scalar_one_or_none()
