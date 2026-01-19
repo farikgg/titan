@@ -3,6 +3,7 @@ from fastapi.responses import JSONResponse
 
 from src.app.lifespan import lifespan
 from src.api.v1.users.router import router as users_router
+from src.api.v1.prices.router import router as prices_router
 
 from src.core.exceptions import *
 
@@ -14,6 +15,11 @@ app = FastAPI(
 )
 
 app.include_router(users_router)
+app.include_router(prices_router)
+
+@app.get("/health")
+async def check_health():
+    return { "status": "ok" }
 
 @app.exception_handler(UserError)
 async def user_exception_handler(request: Request, exc: UserError):
@@ -24,7 +30,11 @@ async def user_exception_handler(request: Request, exc: UserError):
     elif isinstance(exc, UserDoesNotExistError):
         status_code = 404  
     elif isinstance(exc, UserCannotBeDeletedError):
-        status_code = 403  
+        status_code = 409
+    elif isinstance(exc, UserUpdateError):
+        status_code = 409  
+    elif isinstance(exc, UserCreateError):
+        status_code = 409
 
     return JSONResponse(
         status_code=status_code,
