@@ -4,6 +4,7 @@ from datetime import datetime
 
 from src.db.models.price import Source, SourceType
 
+
 class PriceBase(BaseModel):
     art: str
     name: str
