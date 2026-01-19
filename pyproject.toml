@@ -5,6 +5,8 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "aioimaplib>=2.0.1",
+    "aiosmtplib>=5.0.0",
     "alembic>=1.18.1",
     "asyncpg>=0.31.0",
     "bcrypt>=5.0.0",
