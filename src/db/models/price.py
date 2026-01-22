@@ -3,7 +3,7 @@ from datetime import datetime
 from decimal import Decimal
 
 from sqlalchemy.orm import Mapped, mapped_column
-from sqlalchemy import String, Numeric, Enum, func
+from sqlalchemy import String, Numeric, Enum, func, Text
 
 from src.db.initialize import Base
 
@@ -20,8 +20,8 @@ class PriceModel(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     art: Mapped[str] = mapped_column(String(100), index=True)
-    name: Mapped[str] = mapped_column(String(50))
-    description: Mapped[str] = mapped_column(String(255))
+    name: Mapped[str] = mapped_column(String(500))
+    description: Mapped[str] = mapped_column(Text, nullable=True)
     price: Mapped[Decimal] = mapped_column(Numeric(12, 2))
     currency: Mapped[str] = mapped_column(String(3))
     source: Mapped[Source] = mapped_column(Enum(Source))

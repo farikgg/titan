@@ -1,9 +1,10 @@
-from fastapi import FastAPI, Depends, Request
+from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from src.app.lifespan import lifespan
 from src.api.v1.users.router import router as users_router
 from src.api.v1.prices.router import router as prices_router
+from src.api.v1.parse.router import router as sync_now_parser
 
 from src.core.exceptions import *
 
@@ -16,6 +17,7 @@ app = FastAPI(
 
 app.include_router(users_router)
 app.include_router(prices_router)
+app.include_router(sync_now_parser)
 
 @app.get("/health")
 async def check_health():
@@ -35,6 +37,8 @@ async def user_exception_handler(request: Request, exc: UserError):
         status_code = 409  
     elif isinstance(exc, UserCreateError):
         status_code = 409
+    elif isinstance(exc, UserIsNotValidError):
+        status_code = 403
 
     return JSONResponse(
         status_code=status_code,

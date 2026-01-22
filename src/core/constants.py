@@ -4,7 +4,7 @@ from enum import StrEnum
 #           Константы для юзер фичей 
 
 class TgUserRolesEnum(StrEnum):
-    ADMIN = 'admin'
+    ADMIN = 'parse'
     HEAD_MANAGER = 'head_manager'
     MANAGER = 'manager'
 

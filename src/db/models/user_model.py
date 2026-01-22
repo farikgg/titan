@@ -13,7 +13,7 @@ class UserModel(Base):
     id:Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     username: Mapped[str] = mapped_column(String(), nullable=False, unique=True)
     password_hash: Mapped[str] = mapped_column(String(128),nullable=False)
-    role: Mapped[str] = mapped_column(String(60),nullable=False)
+    role: Mapped[str] = mapped_column(String(60),nullable=False, server_default="manager") # добавил роль менеджера по дефолту, чтобы миграций работали
 
     __table_args__ = (
         CheckConstraint(f"role in ({build_string_of_tg_roles()})"),
