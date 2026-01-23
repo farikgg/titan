@@ -8,8 +8,10 @@ from src.db.initialize import async_session
 
 logger = logging.getLogger(__name__)
 
+
 def run_async(coro):
     return asyncio.run(coro)
+
 
 @app.task(bind=True, max_retries=3)
 def parse_from_fuchs(self):
@@ -24,6 +26,7 @@ def parse_from_fuchs(self):
 
     for msg in messages:
         ai_process.delay(msg)
+
 
 @app.task(autoretry_for=(Exception,), retry_backoff=True,  max_retries=5)
 def ai_process(msg_dict):
