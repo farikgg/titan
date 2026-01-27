@@ -5,9 +5,17 @@ from src.worker.celery_app import app
 from src.services.fuchs_parser import FuchsAIParser
 from src.services.mail_parser import EmailParser
 from src.services.price_service import PriceService
+from src.services.skf_service import SKFService
 from src.db.initialize import async_session
 
 logger = logging.getLogger(__name__)
+
+
+ai_parser = FuchsAIParser()
+price_service = PriceService()
+skf_service = SKFService()
+repo = PriceRepository() # доступ к БД
+parser = EmailParser()
 
 
 def run_async(coro):
@@ -21,8 +29,6 @@ def parse_from_fuchs(self):
     """
     Основной таск для парсинга писем
     """
-    parser = EmailParser()
-    repo = PriceRepository() # доступ к БД
     # парсим письма за последние 3 месяца, лимит надо уточнить у заказчиков, сколько писем приходит за 3 месяца
     messages = run_async(parser.fetch_last_message(500))
 
@@ -52,9 +58,6 @@ def ai_process(msg_dict):
     """
     ИИ обработка письма
     """
-    ai_parser = FuchsAIParser()
-    price_service = PriceService()
-
     # обработка на спам
     is_valid = run_async(ai_parser.is_not_spam(msg_dict['subject'], msg_dict['body']))
     if not is_valid:
@@ -80,3 +83,18 @@ def ai_process(msg_dict):
         return f"Сохранено: {len(validated_items)} писем"
 
     return "Ничего не сохранено"
+
+
+SKF_ARTICULS = ["278661", "644-46364-8", "085734"]
+@app.task(name="src.worker.tasks.sync_skf_prices")
+def sync_skf_prices_task():
+    """
+    Обновляет цены для списка важных артикулов SKF
+    """
+    for sku in SKF_ARTICULS:
+        price_data = run_async(skf_service.get_price(sku))
+        if price_data:
+            async def save():
+                async with async_session() as session:
+                    await price_service.add_new_price(session, price_data)
+            run_async(save())
