@@ -14,6 +14,11 @@ class Settings(BaseSettings):
     REDIS_HOST: str
     REDIS_PORT: int
     ADMIN_SECRET_TOKEN: str
+    SKF_API_KEY: str
+    SKF_API_SECRET: str
+    SKF_SALES_UNIT_ID: str
+    SKF_CUSTOMER_ID: str
+
 
     model_config = SettingsConfigDict(
         env_file=".env",

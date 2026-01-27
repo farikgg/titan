@@ -31,3 +31,8 @@ app.conf.beat_schedule = {
         'schedule': crontab(day_of_month=1, month_of_year='*/3', hour=3, minute=0), # каждый 3 месяц 1 числа в 3 часа ночи запустает парсинг таск
     },
 }
+
+app.conf.task_routes = {
+    'src.worker.tasks.ai_process': {'queue': 'heavy'},
+    'src.worker.tasks.parse_from_fuchs': {'queue': 'default'},
+}

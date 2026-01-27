@@ -1,4 +1,4 @@
-from sqlalchemy import select
+from sqlalchemy import select, exists
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -34,3 +34,16 @@ class PriceRepository:
         query = select(PriceModel).where(PriceModel.art == art_id)
         result = await db.execute(query)
         return result.scalar_one_or_none()
+
+    async def exists_by_message_id(self, db: AsyncSession, message_id: str) -> bool:
+        """
+        проверка письма в БД, чтобы избежать дублирования
+        добработка Идемпотентности
+        """
+        if not message_id:
+            return False
+
+        # испльзуем exists() для быстрого поиска
+        query = select(exists().where(PriceModel.email_message_id == message_id))
+        result = await db.execute(query)
+        return result.scalar()

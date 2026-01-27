@@ -1,5 +1,6 @@
 import asyncio, logging
 
+from src.repositories.price_repo import PriceRepository
 from src.worker.celery_app import app
 from src.services.fuchs_parser import FuchsAIParser
 from src.services.mail_parser import EmailParser
@@ -13,22 +14,40 @@ def run_async(coro):
     return asyncio.run(coro)
 
 
-@app.task(bind=True, max_retries=3)
+@app.task(bind=True,
+          max_retries=3,
+          name="src.worker.tasks.parse_from_fuchs")
 def parse_from_fuchs(self):
     """
     Основной таск для парсинга писем
     """
     parser = EmailParser()
+    repo = PriceRepository() # доступ к БД
     # парсим письма за последние 3 месяца, лимит надо уточнить у заказчиков, сколько писем приходит за 3 месяца
     messages = run_async(parser.fetch_last_message(500))
 
-    logger.info(f"Найдено: {len(messages)} писем для обработки")
+    async def filter_and_dispatch():
+        async with async_session() as session:
+            for msg in messages:
+                # ПРОВЕРКА: Если письмо уже обрабатывали — пропускаем
+                if await repo.exists_by_message_id(session, msg['message_id']):
+                    logger.info(f"Письмо {msg['message_ids']} уже есть в базе. Пропуск.")
+                    continue
 
-    for msg in messages:
-        ai_process.delay(msg)
+                # Если новое — отправляем в тяжелую очередь
+                ai_process.delay(msg)
+
+    run_async(filter_and_dispatch())
 
 
-@app.task(autoretry_for=(Exception,), retry_backoff=True,  max_retries=5)
+@app.task(autoretry_for=(Exception,),
+          retry_backoff=True,
+          bind=True,
+          max_retries=5,
+          # ИЗОЛЯЦИЯ: Ограничиваем время выполнения тяжелой задачи
+          time_limit=600, # 10 минут максимум на всё
+          soft_time_limit=480,  # через 8 минут Celery получит сигнал о завершении
+          name="src.worker.tasks.ai_process")
 def ai_process(msg_dict):
     """
     ИИ обработка письма

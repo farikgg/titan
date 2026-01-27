@@ -1,4 +1,5 @@
 import json, logging, pdfplumber, pytesseract, pandas as pd
+from json import JSONDecodeError
 
 from docx import Document
 from io import BytesIO
@@ -24,7 +25,7 @@ class FuchsAIParser:
         Фильтрация. Проверяем, является ли письмо запросом цены/КП
         """
         stop_words = ["акция", "распродажа", "reklama", "survey", "advertisement", "реклама", "опрос"]
-        if any(word in subject.lower() for word in stop_words):
+        if any(word in subject.lower() for word in stop_words) or any(word in body.lower() for word in stop_words):
             return False
         return True
 
@@ -103,7 +104,17 @@ class FuchsAIParser:
                 response_format={"type": "json_object"}
             )
 
-            raw_json = json.loads(response.choices[0].message.content)
+            raw_response = response.choices[0].message.content
+            logger.info("=== RAW GROQ RESPONSE START ===")
+            logger.info(raw_response)
+            logger.info("=== RAW GROQ RESPONSE END ===")
+
+            try:
+                raw_json = json.loads(raw_response)
+            except JSONDecodeError as e:
+                logger.error(f"Ошибка парсинга, сырой ответ {raw_response}")
+                return []
+
             items = raw_json.get("items", [])
 
             validated_items = []
