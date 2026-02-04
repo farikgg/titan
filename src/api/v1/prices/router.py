@@ -24,3 +24,11 @@ async def get_all_prices(
     db: AsyncSession = Depends(get_db)
 ):
     return await price_service.get_prices_list(db)
+
+
+@router.get("/search/{art}", response_model=PriceRead)
+async def search_single(
+        art: str,
+        db: AsyncSession = Depends(get_db)
+):
+    return await price_service.get_price(db, art)

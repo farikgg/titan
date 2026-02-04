@@ -40,6 +40,13 @@ async def user_exception_handler(request: Request, exc: UserError):
     elif isinstance(exc, UserIsNotValidError):
         status_code = 403
 
+
+@app.exception_handler(PriceError)
+async def price_exception_handler(request: Request, exc: PriceError):
+    status_code = 400
+    if isinstance(exc, PriceDoesNotExists):
+        status_code = 404
+
     return JSONResponse(
         status_code=status_code,
         content={"detail": exc.message, "error_type": exc.__class__.__name__}

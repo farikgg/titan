@@ -35,4 +35,6 @@ app.conf.beat_schedule = {
 app.conf.task_routes = {
     'src.worker.tasks.ai_process': {'queue': 'heavy'},
     'src.worker.tasks.parse_from_fuchs': {'queue': 'default'},
+    'src.worker.tasks.sync_skf_prices': {'queue': 'default'},
+    'src.worker.tasks.sync_skf_single': {'queue': 'default'},
 }

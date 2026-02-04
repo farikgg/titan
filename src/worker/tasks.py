@@ -7,18 +7,16 @@ from src.services.mail_parser import EmailParser
 from src.services.price_service import PriceService
 from src.services.skf_service import SKFService
 from src.db.initialize import async_session
+from src.services.lock_service import lock_service
 
 logger = logging.getLogger(__name__)
 
 
-ai_parser = FuchsAIParser()
-price_service = PriceService()
-skf_service = SKFService()
-repo = PriceRepository() # доступ к БД
-parser = EmailParser()
-
-
 def run_async(coro):
+    """
+    Единственная точка входа в asyncio для Celery тасков.
+    НЕ вызывать изнутри async функций.
+    """
     return asyncio.run(coro)
 
 
@@ -27,23 +25,33 @@ def run_async(coro):
           name="src.worker.tasks.parse_from_fuchs")
 def parse_from_fuchs(self):
     """
-    Основной таск для парсинга писем
+    Основной таск для парсинга писем из FUCHS
     """
     # парсим письма за последние 3 месяца, лимит надо уточнить у заказчиков, сколько писем приходит за 3 месяца
-    messages = run_async(parser.fetch_last_message(500))
+    # parser = EmailParser()
+    # messages = run_async(parser.fetch_last_message(500))
+    mock_messages = [{
+        "message_ids": "test-id-999", # Используй то же имя, что в mail_parser
+        "subject": "Актуальные цены FUCHS",
+        "body": "Цена на 601072093 URETHYN CC 2-1 составляет 450.50 EUR. Также RENOLIN CLP 320 стоит 1200 EUR.",
+        "attachments": []
+    }]
+    for msg in mock_messages:
+        ai_process.delay(msg)
 
-    async def filter_and_dispatch():
-        async with async_session() as session:
-            for msg in messages:
-                # ПРОВЕРКА: Если письмо уже обрабатывали — пропускаем
-                if await repo.exists_by_message_id(session, msg['message_id']):
-                    logger.info(f"Письмо {msg['message_ids']} уже есть в базе. Пропуск.")
-                    continue
+    # async def filter_and_dispatch():
+    #     repo = PriceRepository()  # доступ к БД
+    #     async with async_session() as session:
+    #         for msg in messages:
+    #             # ПРОВЕРКА: Если письмо уже обрабатывали — пропускаем
+    #             if await repo.exists_by_message_id(session, msg['message_ids']):
+    #                 logger.info(f"Письмо {msg['message_ids']} уже есть в базе. Пропуск.")
+    #                 continue
+    #
+    #             # Если новое — отправляем в тяжелую очередь
+    #             ai_process.delay(msg)
 
-                # Если новое — отправляем в тяжелую очередь
-                ai_process.delay(msg)
-
-    run_async(filter_and_dispatch())
+    # run_async(filter_and_dispatch())
 
 
 @app.task(autoretry_for=(Exception,),
@@ -54,10 +62,11 @@ def parse_from_fuchs(self):
           time_limit=600, # 10 минут максимум на всё
           soft_time_limit=480,  # через 8 минут Celery получит сигнал о завершении
           name="src.worker.tasks.ai_process")
-def ai_process(msg_dict):
+def ai_process(self, msg_dict):
     """
     ИИ обработка письма
     """
+    ai_parser = FuchsAIParser()
     # обработка на спам
     is_valid = run_async(ai_parser.is_not_spam(msg_dict['subject'], msg_dict['body']))
     if not is_valid:
@@ -74,13 +83,15 @@ def ai_process(msg_dict):
 
     # сохранение в БД
     if validated_items:
+        price_service = PriceService()
         async def save_all():
             async with async_session() as session:
                 for item in validated_items:
-                    await price_service.add_new_price(session, item)
+                    await price_service.update_or_create(session, item)
+                await session.commit()
 
         run_async(save_all())
-        return f"Сохранено: {len(validated_items)} писем"
+        return f"Успех: сохранено {len(validated_items)} позиций товаров"
 
     return "Ничего не сохранено"
 
@@ -89,12 +100,53 @@ SKF_ARTICULS = ["278661", "644-46364-8", "085734"]
 @app.task(name="src.worker.tasks.sync_skf_prices")
 def sync_skf_prices_task():
     """
-    Обновляет цены для списка важных артикулов SKF
+    Массовое обновление цен SKF (batch).
+    Используется для cron / ручного запуска.
     """
-    for sku in SKF_ARTICULS:
-        price_data = run_async(skf_service.get_price(sku))
-        if price_data:
-            async def save():
+    async def _inner():
+        skf_service = SKFService()
+        price_service = PriceService()
+
+        for sku in SKF_ARTICULS:
+            lock_key = f"skf:{sku}"
+            acquired = await lock_service.acquire_lock(lock_key, 6)  # нужно поменять на 600 на проде
+            if not acquired:
+                return
+
+            try:
+                price_data = await skf_service.get_price(sku)
+                if not price_data:
+                    continue
                 async with async_session() as session:
-                    await price_service.add_new_price(session, price_data)
-            run_async(save())
+                    await price_service.update_or_create(session, price_data)
+                    await session.commit()
+            finally:
+                await lock_service.release_lock(lock_key)
+    run_async(_inner())
+
+
+@app.task(name="src.worker.tasks.sync_skf_single")
+def sync_skf_single(sku: str):
+    """
+    Обновляет цены для одного товара SKF
+    """
+    async def _inner():
+        skf_service = SKFService()
+        price_service = PriceService()
+
+        lock_key = f"skf:{sku}"
+        acquired = await lock_service.acquire_lock(lock_key, expire=6) # поменять на проде на 600
+        if not acquired:
+            return
+
+        try:
+            price_data = await skf_service.get_price(sku)
+            if not price_data:
+                return
+            async with async_session() as session:
+                await price_service.update_or_create(session, price_data)
+                await session.commit()
+        finally:
+            await lock_service.release_lock(lock_key)
+    run_async(_inner())
+    

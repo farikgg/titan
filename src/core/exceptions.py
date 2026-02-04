@@ -27,6 +27,18 @@ class UserCreateError(UserError):
         self.message = f"Cannot create user in the database."
         super().__init__(self.message)
 
+
 class UserIsNotValidError(UserError):
     def __init__(self):
         self.message = f"Wrong Admin Token! Can't parse email."
+        super().__init__(self.message)
+
+# классы exception для товаров
+class PriceError(Exception):
+    ...
+
+
+class PriceDoesNotExists(PriceError):
+    def __init__(self):
+        self.message = f"Product with this articul does not exists."
+        super().__init__(self.message)

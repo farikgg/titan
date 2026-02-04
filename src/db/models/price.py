@@ -7,13 +7,16 @@ from sqlalchemy import String, Numeric, Enum, func, Text
 
 from src.db.initialize import Base
 
+
 class Source(enum.Enum):
     FUCHS = "fuchs"
     SKF = "skf"
 
+
 class SourceType(enum.Enum):
     EMAIL = "email"
     API = "api"
+
 
 class PriceModel(Base):
     __tablename__ = "prices"
