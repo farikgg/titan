@@ -1,6 +1,7 @@
 from pydantic import BaseModel, ConfigDict
 from decimal import Decimal
 from datetime import datetime
+from typing import Optional
 
 from src.db.models.price import Source, SourceType
 
@@ -13,6 +14,7 @@ class PriceBase(BaseModel):
     currency: str
     source: Source
     source_type: SourceType
+    email_message_id: Optional[str] = None
 
 
 class PriceCreate(PriceBase):

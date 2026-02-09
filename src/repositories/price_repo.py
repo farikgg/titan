@@ -13,9 +13,8 @@ class PriceRepository:
         # 2. Создаем экземпляр модели БД
         db_obj = PriceModel(**data)
         try:
-        # 3. Добавляем в сессию
             db.add(db_obj)
-        # 5. Обновляем объект, чтобы получить ID и updated_at из БД
+            await db.flush()
             await db.refresh(db_obj)
             return db_obj
         except IntegrityError:

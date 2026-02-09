@@ -1,7 +1,7 @@
 import bcrypt
 
 from src.db.initialize import Base
-from src.core.utils import build_string_of_tg_roles
+from src.core.enums import Role
 
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy import String, CheckConstraint
@@ -10,13 +10,21 @@ from sqlalchemy import String, CheckConstraint
 class UserModel(Base):
     __tablename__ = "users"
 
-    id:Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    username: Mapped[str] = mapped_column(String(), nullable=False, unique=True)
-    password_hash: Mapped[str] = mapped_column(String(128),nullable=False)
-    role: Mapped[str] = mapped_column(String(60),nullable=False, server_default="manager") # добавил роль менеджера по дефолту, чтобы миграций работали
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    tg_id: Mapped[int] = mapped_column(unique=True, nullable=False)
+    bitrix_user_id: Mapped[int] = mapped_column(nullable=False)
+
+    role: Mapped[str] = mapped_column(
+        String(60),
+        nullable=False,
+        server_default=Role.manager.value,
+    )
 
     __table_args__ = (
-        CheckConstraint(f"role in ({build_string_of_tg_roles()})"),
+        CheckConstraint(
+            f"role in ('{Role.manager.value}', '{Role.head_manager.value}', '{Role.admin.value}')"
+        ),
     )
 
     def set_password(self, password: str):

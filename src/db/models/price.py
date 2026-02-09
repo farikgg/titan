@@ -3,7 +3,7 @@ from datetime import datetime
 from decimal import Decimal
 
 from sqlalchemy.orm import Mapped, mapped_column
-from sqlalchemy import String, Numeric, Enum, func, Text
+from sqlalchemy import String, Numeric, Enum, func, Text, UniqueConstraint
 
 from src.db.initialize import Base
 
@@ -31,3 +31,7 @@ class PriceModel(Base):
     source: Mapped[Source] = mapped_column(Enum(Source))
     source_type: Mapped[SourceType] = mapped_column(Enum(SourceType))
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("art", "source", name="uq_price_art_source"),
+    )

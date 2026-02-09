@@ -92,3 +92,26 @@ class BitrixService:
                 "Bitrix: ошибка установки товаров для сделки %s", deal_id
             )
             return False
+
+    async def get_all_deals(self):
+        try:
+            result = await to_thread.run_sync(
+                self.bx.call,
+                "crm.deal.list",
+                {
+                    "filter": {"CLOSED": "N"},
+                    "select": [
+                        "ID",
+                        "TITLE",
+                        "STAGE_ID",
+                        "CATEGORY_ID",
+                        "OPPORTUNITY",
+                        "CURRENCY_ID",
+                        "ASSIGNED_BY_ID",
+                    ],
+                },
+            )
+            return result or []
+        except Exception:
+            logger.exception("Bitrix: error fetching all deals")
+            return []

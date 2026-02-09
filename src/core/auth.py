@@ -1,12 +1,13 @@
 """
 нам нужно защитить backend, чтобы только TMA мог запрашивать цены
 """
-import hmac, hashlib
+import hmac, hashlib, json
 
-from fastapi import Header, HTTPException, status
+from fastapi import Header, HTTPException
 from urllib.parse import parse_qsl
 
 from src.app.config import settings
+from src.repositories.user_repo import UserRepository
 
 
 def verify_telegram_data(init_data: str, bot_token: str) -> bool:
@@ -34,19 +35,25 @@ def verify_telegram_data(init_data: str, bot_token: str) -> bool:
 
 
 async def get_tg_user(x_tg_init_data: str = Header(None)):
-    """
-    Зависимость, которая проверяет заголовок 'X-TG-Init-Data'
-    """
     if not x_tg_init_data:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Telegram initData missing"
-        )
+        raise HTTPException(status_code=401, detail="Telegram initData missing")
 
     if not verify_telegram_data(x_tg_init_data, settings.BOT_TOKEN):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Invalid Telegram signature"
-        )
+        raise HTTPException(status_code=403, detail="Invalid Telegram signature")
 
-    return True
+    data = dict(parse_qsl(x_tg_init_data))
+
+    if "user" not in data:
+        raise HTTPException(status_code=403, detail="Telegram user missing")
+
+    tg_user = json.loads(data["user"])
+    tg_id = tg_user.get("id")
+
+    if not tg_id:
+        raise HTTPException(status_code=403, detail="Invalid Telegram user")
+
+    user = await UserRepository.get_by_tg_id(tg_id)
+    if not user:
+        raise HTTPException(status_code=403, detail="User not registered")
+
+    return user

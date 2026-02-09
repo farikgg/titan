@@ -1,11 +1,11 @@
 from pydantic import BaseModel, ConfigDict
-from src.core.constants import TgUserRolesEnum
 from typing import Optional
+from src.core.enums import Role
 
 
 class UserBase(BaseModel):
     username: str
-    role: TgUserRolesEnum
+    role: Role
 
 class UserCreate(UserBase):
     password: str
@@ -20,7 +20,7 @@ class UserRead(UserBase):
 class UserUpdate(BaseModel):
     username: Optional[str] = None
     password: Optional[str] = None
-    role: Optional[TgUserRolesEnum] = None
+    role: Optional[Role] = None
     
 class UserPasswordCheck(BaseModel):
     password: str

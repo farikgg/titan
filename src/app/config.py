@@ -1,6 +1,13 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+
+class BitrixStages(BaseSettings):
+    DEAL_NEW: str = "C2:NEW"
+    DEAL_WON: str = "C2:WON"
+    DEAL_PAID: str = "C2:WON"  # если оплата = WON, иначе свой ID
+
+
 class Settings(BaseSettings):
     DATABASE_URL: str
     BITRIX_WEBHOOK: str | None = None

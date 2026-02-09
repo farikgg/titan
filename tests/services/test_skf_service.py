@@ -1,6 +1,7 @@
 import pytest, respx
 from httpx import Response
 
+from src.services.price_service import PriceService
 from src.services.skf_service import SKFService
 
 
@@ -64,3 +65,15 @@ async def test_skf_get_price_missing_fields():
     price = await service.get_price(sku)
 
     assert price is None
+
+
+    # Тест PriceService.resolve_prices
+    # Что проверяем
+    # нормализацию SKU
+    # missing → enqueue
+    # stale → enqueue
+@pytest.mark.asyncio
+async def test_resolve_prices_empty(db):
+    service = PriceService()
+    prices = await service.resolve_prices(db, [], source="fuchs")
+    assert prices == []

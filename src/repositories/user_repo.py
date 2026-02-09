@@ -1,7 +1,8 @@
-
-from src.db.models.user_model import UserModel
-
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+
+from src.db.initialize import async_session
+from src.db.models.user_model import UserModel
 
 
 
@@ -54,3 +55,12 @@ class UserRepository:
 
     async def check_password(self, user: UserModel, password: str):
         return user.check_password(password)
+
+
+    @staticmethod
+    async def get_by_tg_id(tg_id: int):
+        async with async_session() as session:
+            result = await session.execute(
+                select(UserModel).where(UserModel.tg_id == tg_id)
+            )
+            return result.scalar_one_or_none()

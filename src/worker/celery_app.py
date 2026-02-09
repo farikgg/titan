@@ -34,7 +34,12 @@ app.conf.beat_schedule = {
 
 app.conf.task_routes = {
     'src.worker.tasks.ai_process': {'queue': 'heavy'},
+    'src.worker.tasks.generate_pdf_task': {'queue': 'heavy'},
     'src.worker.tasks.parse_from_fuchs': {'queue': 'default'},
     'src.worker.tasks.sync_skf_prices': {'queue': 'default'},
     'src.worker.tasks.sync_skf_single': {'queue': 'default'},
+    'src.worker.tasks.process_deal_update': {'queue': 'default'},
+    'src.worker.tasks.sync_skf_bulk': {'queue': 'default'},
 }
+
+app.conf.worker_pool = "solo"

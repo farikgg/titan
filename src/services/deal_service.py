@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.services.bitrix_service import BitrixService
 from src.services.price_service import PriceService
+from src.core.enums import Role
 
 logger = logging.getLogger(__name__)
 
@@ -75,3 +76,16 @@ class DealService:
             )
 
         return deal_id
+
+    async def list_deals_for_user(self, user):
+        """
+        Row-level RBAC:
+        - manager: только свои сделки
+        - head-manager/admin: все сделки
+        """
+        if user.role == Role.manager.value:
+            return await self.bitrix_service.get_deals(
+                bitrix_user_id=user.bitrix_user_id
+            )
+        # для head-manager и admin
+        return await self.bitrix_service.get_all_deals()
