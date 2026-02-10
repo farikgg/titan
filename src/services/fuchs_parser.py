@@ -1,10 +1,11 @@
-import json, logging, pdfplumber, pytesseract, pandas as pd
+import json, logging, pdfplumber, pytesseract, os, pandas as pd
 from json import JSONDecodeError
 
 from docx import Document
 from io import BytesIO
 from groq import AsyncGroq
 from PIL import Image, ImageOps
+from pytesseract import TesseractNotFoundError
 
 from src.app.config import settings
 from src.schemas.price_schema import PriceCreate
@@ -16,18 +17,23 @@ class FuchsAIParser:
         self.client = AsyncGroq(api_key=settings.GROQ_API_KEY)
         self.model = "llama-3.3-70b-versatile"  # Самая мощная модель в Groq сейчас
 
-    # Настройка пути к Tesseract, если он не в переменной окружения
-    # import os
-    # pytesseract.pytesseract.tesseract_cmd = os.getenv('TESSERACT_CMD', 'tesseract')
+        # Настройка пути к Tesseract, если он не в переменной окружения
+        tesseract_cmd = os.getenv("TESSERACT_CMD")
+        if tesseract_cmd:
+            pytesseract.pytesseract.tesseract_cmd = tesseract_cmd
 
-    async def is_not_spam(self, subject: str, body: str) -> bool:
+    def is_not_spam(self, subject: str, body: str) -> bool:
         """
         Фильтрация. Проверяем, является ли письмо запросом цены/КП
         """
-        stop_words = ["акция", "распродажа", "reklama", "survey", "advertisement", "реклама", "опрос"]
-        if any(word in subject.lower() for word in stop_words) or any(word in body.lower() for word in stop_words):
-            return False
-        return True
+        spam_keywords = {
+            "акция", "распродажа", "advertisement", "survey", "опрос"
+        }
+
+        text = f"{subject} {body}".lower()
+        spam_hits = sum(1 for w in spam_keywords if w in text)
+
+        return spam_hits < 2
 
     def extract_text_from_attachments(self, attachments: list[dict]) -> str:
         """
@@ -37,37 +43,70 @@ class FuchsAIParser:
         full_text = ""
 
         for att in attachments:
-            content = att['content']
-            name = att['name'].lower()
-            file_text = f"\n--- ФАЙЛ: {name} ---\n"
+            name = att["name"].lower()
+            content = att["content"]
+            file_text = f"\n--- FILE: {name} ---\n"
 
             try:
-                # PDF
-                if name.endswith('.pdf'):
+                if name.endswith(".pdf"):
                     with pdfplumber.open(BytesIO(content)) as pdf:
-                        file_text += "\n".join(page.extract_text() for page in pdf.pages if page.extract_text())
-                # WORD
-                elif name.endswith('.docx'):
-                    doc = Document(BytesIO(content))
-                    file_text += "\n".join(p.text for p in doc.paragraphs)
-                # EXCEL sheets
-                elif name.endswith(('.xls', '.xlsx')):
-                    df = pd.read_excel(BytesIO(content))
-                    file_text += df.to_string()
-                # IMAGES
-                elif name.endswith (('.jpg', '.jpeg', '.png', '.bmp', '.webp')):
-                    image = Image.open(BytesIO(content))
+                        for page in pdf.pages:
+                            text = page.extract_text()
+                            if text:
+                                file_text += text + "\n"
 
-                    # --- ПРЕПРОЦЕССИНГ (Делаем ч/б и контраст для лучшего OCR) ---
-                    image = image.convert('L') # В ч/б
-                    image = ImageOps.autocontrast(image) # Повышаем контраст
-                    # -------------------------------------------------------------
+                elif name.endswith(".docx"):
+                    sheets = pd.read_excel(BytesIO(content), sheet_name=None)
+                    for sheet_name, df in sheets.items():
+                        df = df.rename(str.lower, axis=1)
 
-                    file_text += pytesseract.image_to_string(image, lang='rus+kaz+eng')
+                        required_cols = {
+                            "sap number": "art",
+                            "price €/piece": "price",
+                        }
+                        if not all(col in df.collumns for col in required_cols):
+                            continue
+                        for _, row in df.iterrows():
+                            art = str(row["sap number"]).strip()
+                            price = str(row["price €/piece"]).replace(",", ".").strip()
+
+                            if not art or not price:
+                                continue
+
+                            file_text += (
+                                f"\nITEM:\n"
+                                f"art: {art}\n"
+                                f"price: {price}\n"
+                                f"currency: EUR\n"
+                            )
+
+                elif name.endswith((".xls", ".xlsx")):
+                    sheets = pd.read_excel(BytesIO(content), sheet_name=None)
+                    for sheet_name, df in sheets.items():
+                        file_text += f"\n[SHEET: {sheet_name}]\n"
+                        file_text += df.to_csv(sep=";", index=False)
+
+                elif name.endswith((".jpg", ".jpeg", ".png", ".bmp", ".webp")):
+                    try:
+                        image = Image.open(BytesIO(content))
+                        image = image.convert("L")
+                        image = image.resize(
+                            (image.width * 2, image.height * 2),
+                            Image.BICUBIC,
+                        )
+                        image = ImageOps.autocontrast(image)
+
+                        file_text += pytesseract.image_to_string(
+                            image, lang="rus+kaz+eng"
+                        )
+                    except TesseractNotFoundError:
+                        logger.warning("OCR отключен, пропускаю изображение %s", name)
 
                 full_text += file_text
+
             except Exception as e:
-                logger.error(f"❌ Ошибка парсинга {name}: {e}")
+                logger.exception(f"Ошибка парсинга файла {name}: {e}")
+
         return full_text
 
     async def parse_to_objects(self, email_body: str, attachment_text: str = "") -> list[PriceCreate]:
@@ -78,24 +117,56 @@ class FuchsAIParser:
         if not email_body.strip() and not attachment_text.strip():
             return []
 
-        combined_text = f"EMAIL_BODY:\n{email_body}\n\nATTACHMENT_DATA:\n{attachment_text}"
+        MAX_TEXT_LEN = 15_000
+        combined_text = f"EMAIL_BODY:\n{email_body}\n\nATTACHMENT_DATA:\n{attachment_text}"[:MAX_TEXT_LEN]
+        logger.info("FUCHS парсер начал работать, длина текста:%s", len(combined_text))
 
         prompt = f"""
-        Ты — ведущий аналитик ГК Титан. Твоя задача: извлечь прайс-лист из данных поставщика FUCHS. Если цифровой артикул 
-        товара не найден, используй краткое техническое название товара в качестве артикула 
-        (например, 'RENOLIN-CLP-320'). Поле 'art' никогда не должно быть null.
+        SYSTEM ROLE:
+        Ты — senior аналитик закупок и ценообразования в промышленной компании.
 
-        ИНСТРУКЦИИ:
-        1. Извлеки артикул (art), название (name), цену (price) и валюту (currency).
-        2. Если цена указана со скидкой, бери финальную цену.
-        3. Валюту приводи к стандарту ISO (RUB, EUR, USD).
-        4. Игнорируй нерелевантную информацию (адреса, подписи).
+        КОНТЕКСТ:
+        Документ — коммерческое предложение / quotation от поставщика FUCHS.
+        Валюта документа: EUR, если не указано явно иное.
 
-        ДАННЫЕ ДЛЯ АНАЛИЗА:
+        ПРАВИЛА ИЗВЛЕЧЕНИЯ:
+        - Извлекай ТОЛЬКО позиции товаров.
+        - Каждая позиция ОБЯЗАНА иметь:
+          - art (артикул или SAP Number или техническое обозначение)
+          - name (название товара)
+        - Цена может быть:
+          - "XXX.XX"
+          - "XXX,XX"
+          - "XXX.XX / EA"
+          Используй только числовое значение.
+        - Если цена НЕ указана — ставь null.
+        - Если валюта не указана явно — используй "EUR".
+        - Игнорируй подписи, адреса, номера писем, условия поставки.
+
+        ВАЖНО:
+        - Если найден SAP Number — используй его как art.
+        - Если SAP Number нет — используй FUCHS Alternative или техническое название.
+        - НЕ придумывай цены.
+        - НЕ дублируй позиции.
+
+        ДАННЫЕ:
+        --------------------
         {combined_text}
+        --------------------
 
-        ФОРМАТ ОТВЕТА: Только JSON объект с ключом "items".
-        Пример: {{"items": [{{"art": "123", "name": "Oil", "price": 100.5, "currency": "EUR", "description": "..."}}]}}
+        ФОРМАТ ОТВЕТА:
+        Верни ТОЛЬКО валидный JSON следующего вида:
+
+        {{
+          "items": [
+            {{
+              "art": "string",
+              "name": "string",
+              "price": number | null,
+              "currency": "EUR"
+            }}
+          ]
+        }}
         """
 
         try:
@@ -117,7 +188,9 @@ class FuchsAIParser:
                 logger.error(f"Ошибка парсинга, сырой ответ {raw_response}")
                 return []
 
-            items = raw_json.get("items", [])
+            items = raw_json.get("items") or []
+            if not isinstance(items, list):
+                return []
 
             validated_items = []
             for item in items:

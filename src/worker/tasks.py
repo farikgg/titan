@@ -5,12 +5,13 @@ from src.repositories.price_repo import PriceRepository
 from src.worker.celery_app import app
 from src.services.fuchs_parser import FuchsAIParser
 from src.services.mail_parser import EmailParser
-from src.services.price_service import PriceService
+from src.services.price_service import PriceService, PriceCreate
 from src.services.skf_service import SKFService
 from src.db.initialize import async_session
 from src.services.lock_service import lock_service
 from src.app.config import settings
 from src.db.models.pdf_generation import PdfGeneration
+from src.services.excel_parser import FuchsExcelParser
 
 logger = logging.getLogger(__name__)
 
@@ -57,46 +58,58 @@ def parse_from_fuchs(self):
     # run_async(filter_and_dispatch())
 
 
-@app.task(autoretry_for=(Exception,),
-          retry_backoff=True,
-          bind=True,
-          max_retries=5,
-          # ИЗОЛЯЦИЯ: Ограничиваем время выполнения тяжелой задачи
-          time_limit=600, # 10 минут максимум на всё
-          soft_time_limit=480,  # через 8 минут Celery получит сигнал о завершении
-          name="src.worker.tasks.ai_process")
+@app.task(
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    bind=True,
+    max_retries=5,
+    time_limit=600,
+    soft_time_limit=480,
+    name="src.worker.tasks.ai_process",
+)
 def ai_process(self, msg_dict):
-    """
-    ИИ обработка письма
-    """
     ai_parser = FuchsAIParser()
-    # обработка на спам
-    is_valid = run_async(ai_parser.is_not_spam(msg_dict['subject'], msg_dict['body']))
-    if not is_valid:
-        logger.info(f"Это спам: {msg_dict['subject']}, обрабатываю след. письмо")
+    excel_parser = FuchsExcelParser()
+
+    if not ai_parser.is_not_spam(msg_dict["subject"], msg_dict["body"]):
         return "Spam"
 
-    # берем из письма доп. доки(pdf, sheets, images)
-    attachment_text  = ""
-    if msg_dict.get('attachments'):
-        attachment_text = ai_parser.extract_text_from_attachments(msg_dict['attachments'])
+    attachments = msg_dict.get("attachments", [])
+    items: list[PriceCreate] = []
 
-    # парсинг через ИИ
-    validated_items = run_async(ai_parser.parse_to_objects(msg_dict['body'], attachment_text))
+    # 1️⃣ Excel — приоритет №1
+    for att in attachments:
+        if att["name"].lower().endswith((".xls", ".xlsx")):
+            items = excel_parser.parse(att["content"])
+            if items:
+                logger.info("EXCEL PARSED: %s", len(items))
+                break
 
-    # сохранение в БД
-    if validated_items:
-        price_service = PriceService()
-        async def save_all():
-            async with async_session() as session:
-                for item in validated_items:
-                    await price_service.update_or_create(session, item)
-                await session.commit()
+    # 2️⃣ AI — только если Excel пуст
+    if not items:
+        attachment_text = ai_parser.extract_text_from_attachments(attachments)
+        items = run_async(
+            ai_parser.parse_to_objects(
+                msg_dict["body"],
+                attachment_text,
+            )
+        )
 
-        run_async(save_all())
-        return f"Успех: сохранено {len(validated_items)} позиций товаров"
+    if not items:
+        return "No data"
 
-    return "Ничего не сохранено"
+    price_service = PriceService()
+
+    async def save():
+        async with async_session() as session:
+            for item in items:
+                item.email_message_id = msg_dict.get("message_ids")
+                await price_service.update_or_create(session, item)
+            await session.commit()
+
+    run_async(save())
+    return f"Сохранено {len(items)} позиций"
+
 
 
 SKF_ARTICULS = ["278661", "644-46364-8", "085734"]

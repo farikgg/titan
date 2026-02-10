@@ -25,7 +25,9 @@ class Settings(BaseSettings):
     SKF_API_SECRET: str
     SKF_SALES_UNIT_ID: str
     SKF_CUSTOMER_ID: str
-
+    AZURE_TENANT_ID: str
+    AZURE_CLIENT_ID: str
+    AZURE_CLIENT_SECRET: str
 
     model_config = SettingsConfigDict(
         env_file=".env",

@@ -10,8 +10,8 @@ class PriceBase(BaseModel):
     art: str
     name: str
     description: str | None = None
-    price: Decimal
-    currency: str
+    price: Decimal | None = None
+    currency: str | None = None
     source: Source
     source_type: SourceType
     email_message_id: Optional[str] = None
