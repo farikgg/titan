@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 
 from src.app.config import settings
 from src.schemas.price_schema import PriceCreate
+from src.db.models.price import Source, SourceType
 
 logger = logging.getLogger(__name__)
 
@@ -36,14 +37,20 @@ class SKFService:
                     logger.error("SKF API error", extra={"sku": sku, "msg": data["message"]})
                     return None
 
+                price = data.get("QuantityBasedPrice")
+                currency = data.get("Currency")
+
+                if price is None or currency is None:
+                    return None
+
                 return PriceCreate(
                     art=sku,
                     name=data.get("SupplierItemID", sku),
-                    price=data.get("QuantityBasedPrice"),
-                    currency=data.get("Currency"),
+                    price=price,
+                    currency=currency,
                     description=str(data.get("StockAvailability")),
-                    source="skf",
-                    source_type="api",
+                    source=Source.SKF,
+                    source_type=SourceType.API,
                 )
 
             except Exception as e:

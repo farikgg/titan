@@ -1,5 +1,6 @@
 import asyncio, logging
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from src.repositories.price_repo import PriceRepository
 from src.worker.celery_app import app
@@ -12,104 +13,137 @@ from src.services.lock_service import lock_service
 from src.app.config import settings
 from src.db.models.pdf_generation import PdfGeneration
 from src.services.excel_parser import FuchsExcelParser
+from src.services.fuchs_pipeline import process_fuchs_message
 
 logger = logging.getLogger(__name__)
 
 
 def run_async(coro):
     """
-    Единственная точка входа в asyncio для Celery тасков.
-    НЕ вызывать изнутри async функций.
+    Безопасный запуск async-кода из Celery.
+    Не закрывает event loop, если он уже есть.
     """
-    return asyncio.run(coro)
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+
+    if loop and loop.is_running():
+        # Celery / retry / weird env
+        return asyncio.run_coroutine_threadsafe(coro, loop).result()
+    else:
+        return asyncio.run(coro)
 
 
-@app.task(bind=True,
-          max_retries=3,
-          name="src.worker.tasks.parse_from_fuchs")
+
+@app.task(
+    bind=True,
+    name="src.worker.tasks.parse_from_fuchs",
+)
 def parse_from_fuchs(self):
     """
-    Основной таск для парсинга писем из FUCHS
+    Оркестратор парсинга писем FUCHS:
+    - вытаскивает письма
+    - фильтрует уже обработанные
+    - отправляет в heavy ai_process
     """
-    # парсим письма за последние 3 месяца, лимит надо уточнить у заказчиков, сколько писем приходит за 3 месяца
-    # parser = EmailParser()
-    # messages = run_async(parser.fetch_last_message(500))
-    mock_messages = [{
-        "message_ids": "test-id-999", # Используй то же имя, что в mail_parser
-        "subject": "Актуальные цены FUCHS",
-        "body": "Цена на 601072093 URETHYN CC 2-1 составляет 450.50 EUR. Также RENOLIN CLP 320 стоит 1200 EUR.",
-        "attachments": []
-    }]
-    for msg in mock_messages:
-        ai_process.delay(msg)
+    parser = EmailParser()
+    repo = PriceRepository()
 
-    # async def filter_and_dispatch():
-    #     repo = PriceRepository()  # доступ к БД
-    #     async with async_session() as session:
-    #         for msg in messages:
-    #             # ПРОВЕРКА: Если письмо уже обрабатывали — пропускаем
-    #             if await repo.exists_by_message_id(session, msg['message_ids']):
-    #                 logger.info(f"Письмо {msg['message_ids']} уже есть в базе. Пропуск.")
-    #                 continue
-    #
-    #             # Если новое — отправляем в тяжелую очередь
-    #             ai_process.delay(msg)
+    async def _inner():
+        messages = await parser.fetch_last_message(limit=200)
 
-    # run_async(filter_and_dispatch())
+        async with async_session() as session:
+            for msg in messages:
+                message_id = msg.get("message_ids")
+                if not message_id:
+                    continue
+
+                exists = await repo.exists_by_message_id(session, message_id)
+                if exists:
+                    logger.info("Письмо %s уже обработано, пропуск", message_id)
+                    continue
+
+                ai_process.delay(msg)
+
+    run_async(_inner())
+    return "FUCHS parsing dispatched"
 
 
 @app.task(
     autoretry_for=(Exception,),
     retry_backoff=True,
     bind=True,
-    max_retries=5,
     time_limit=600,
     soft_time_limit=480,
     name="src.worker.tasks.ai_process",
+    retry_jitter=True,
+    retry_kwargs={"max_retries": 5},
+    retry_exceptions=(TimeoutError, ConnectionError),
 )
 def ai_process(self, msg_dict):
-    ai_parser = FuchsAIParser()
-    excel_parser = FuchsExcelParser()
-
-    if not ai_parser.is_not_spam(msg_dict["subject"], msg_dict["body"]):
-        return "Spam"
-
-    attachments = msg_dict.get("attachments", [])
-    items: list[PriceCreate] = []
-
-    # 1️⃣ Excel — приоритет №1
-    for att in attachments:
-        if att["name"].lower().endswith((".xls", ".xlsx")):
-            items = excel_parser.parse(att["content"])
-            if items:
-                logger.info("EXCEL PARSED: %s", len(items))
-                break
-
-    # 2️⃣ AI — только если Excel пуст
-    if not items:
-        attachment_text = ai_parser.extract_text_from_attachments(attachments)
-        items = run_async(
-            ai_parser.parse_to_objects(
-                msg_dict["body"],
-                attachment_text,
-            )
-        )
-
-    if not items:
-        return "No data"
-
-    price_service = PriceService()
-
-    async def save():
-        async with async_session() as session:
-            for item in items:
-                item.email_message_id = msg_dict.get("message_ids")
-                await price_service.update_or_create(session, item)
-            await session.commit()
-
-    run_async(save())
-    return f"Сохранено {len(items)} позиций"
-
+    return run_async(process_fuchs_message(msg_dict))
+# def ai_process(self, msg_dict):
+#     try:
+#         ai_parser = FuchsAIParser()
+#         excel_parser = FuchsExcelParser()
+#         repo = PriceRepository()
+#
+#         async def _inner():
+#             async with async_session() as session:
+#                 exists = await repo.exists_by_message_id(
+#                     session,
+#                     msg_dict["message_ids"],
+#                 )
+#                 if exists:
+#                     logger.info(
+#                         "Письмо %s уже обработано, пропуск",
+#                         msg_dict["message_ids"],
+#                     )
+#                     return "Already processed"
+#
+#             if not ai_parser.is_not_spam(msg_dict["subject"], msg_dict["body"]):
+#                 return "Spam"
+#
+#             attachments = msg_dict.get("attachments", [])
+#             items: list[PriceCreate] = []
+#
+#             # 1️⃣ Excel — приоритет №1
+#             for att in attachments:
+#                 if att["name"].lower().endswith((".xls", ".xlsx")):
+#                     items = excel_parser.parse(att["content"])
+#                     if items:
+#                         logger.info("EXCEL PARSED: %s", len(items))
+#                         break
+#
+#             # 2️⃣ AI — только если Excel пуст
+#             if not items:
+#                 attachment_text = ai_parser.extract_text_from_attachments(attachments)
+#                 items = run_async(
+#                     ai_parser.parse_to_objects(
+#                         msg_dict["body"],
+#                         attachment_text,
+#                     )
+#                 )
+#
+#             if not items:
+#                 return "No data"
+#
+#             price_service = PriceService()
+#
+#
+#             async with async_session() as session:
+#                 for item in items:
+#                     item.email_message_id = msg_dict.get("message_ids")
+#                     await price_service.update_or_create(session, item)
+#                 await session.commit()
+#
+#             return f"Сохранено {len(items)} позиций"
+#         return run_async(_inner())
+#
+#     except IntegrityError as e:
+#         logger.warning("Проблема, идет дубликация: %s", e)
+#         return "Integrity skip"
 
 
 SKF_ARTICULS = ["278661", "644-46364-8", "085734"]
