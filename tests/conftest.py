@@ -57,6 +57,7 @@ async def test_engine():
     engine = create_async_engine(TEST_DATABASE_URL)
 
     async with engine.begin() as conn:
+        import src.db.models
         await conn.run_sync(Base.metadata.create_all)
 
     yield engine

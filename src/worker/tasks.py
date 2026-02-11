@@ -229,6 +229,66 @@ def process_deal_update(deal_id: int):
     run_async(_inner())
 
 
+async def generate_pdf(deal_id: int, stage_id: str):
+    """
+    Генерация PDF коммерческого предложения.
+    """
+    from src.core.bitrix import get_bitrix_client
+    from src.services.bitrix_service import BitrixService
+    from src.services.price_service import PriceService
+    from src.services.pdf_service import PdfService
+    from src.db.models.pdf_generation import PdfGeneration
+    from sqlalchemy import select
+    from src.db.initialize import async_session
+
+    bx = get_bitrix_client()
+    bitrix_service = BitrixService(bx)
+    price_service = PriceService()
+    pdf_service = PdfService()
+
+    deal = await bitrix_service.get_deal(deal_id)
+    if not deal:
+        logger.error(f"Сделка: {deal_id} не найдена для PDF файла")
+        return None
+
+    async with async_session() as session:
+        exists = await session.scalar(
+            select(PdfGeneration.id).where(
+                PdfGeneration.deal_id == deal_id,
+                PdfGeneration.stage_id == stage_id,
+            )
+        )
+        if exists:
+            logger.info(f"PDF файл уже был создан для сделки: {deal_id}")
+            return "PDF файл уже был создан"
+
+        session.add(PdfGeneration(deal_id=deal_id, stage_id=stage_id))
+        await session.commit()
+
+    products = await bitrix_service.get_deal_products(deal_id)
+
+    async with async_session() as session:
+        skus = [p["PRODUCT_ID"] for p in products]
+
+        resolved_prices = await price_service.resolve_prices(
+            db=session,
+            skus=skus,
+            source="fuchs",
+        )
+
+    pdf_path = pdf_service.generate_offer(
+        deal={
+            "id": deal_id,
+            "title": deal["TITLE"],
+            "items": resolved_prices,
+            "currency": deal["CURRENCY_ID"],
+        }
+    )
+
+    logger.info(f"Создался PDF файл для сделки: {deal_id}, где он находиться: {pdf_path}")
+    return pdf_path
+
+
 @app.task(
     bind=True,
     autoretry_for=(Exception,),
@@ -239,60 +299,7 @@ def process_deal_update(deal_id: int):
     name="src.worker.tasks.generate_pdf_task",
 )
 def generate_pdf_task(self, deal_id: int, stage_id: str):
-    """
-    Генерация PDF коммерческого предложения.
-    """
-    async def _inner():
-        from src.core.bitrix import get_bitrix_client
-        from src.services.bitrix_service import BitrixService
-        from src.services.price_service import PriceService
-        from src.services.pdf_service import PdfService
-
-        bx = get_bitrix_client()
-        bitrix_service = BitrixService(bx)
-        price_service = PriceService()
-        pdf_service = PdfService()
-
-        deal = await bitrix_service.get_deal(deal_id)
-        if not deal:
-            logger.error(f"Сделка: {deal_id} не найдена для PDF файла")
-            return
-
-        async with async_session() as session:
-            exists = await session.scalar(
-                select(PdfGeneration.id).where(
-                    PdfGeneration.deal_id == deal_id,
-                    PdfGeneration.stage_id == stage_id,
-                )
-            )
-            if exists:
-                logger.info(f"PDF файл уже был создан для сделки: {deal_id}")
-                return
-
-            session.add(PdfGeneration(deal_id=deal_id, stage_id=stage_id))
-            await session.commit()
-
-        products = await bitrix_service.get_deal_products(deal_id)
-
-        async with async_session() as session:
-            resolved_prices = await price_service.resolve_prices(
-                db=session,
-                items=products,
-                supplier="fuchs",
-            )
-
-        pdf_path = pdf_service.generate_offer(
-            deal={
-                "id": deal_id,
-                "title": deal["TITLE"],
-                "items": resolved_prices,
-                "currency": deal["CURRENCY_ID"],
-            }
-        )
-
-        logger.info(f"Создался PDF файл для сделки: {deal_id}, где он находиться: {pdf_path}")
-
-    run_async(_inner())
+    return run_async(generate_pdf(deal_id, stage_id))
 
 
 @app.task(name="src.worker.tasks.sync_skf_bulk")
