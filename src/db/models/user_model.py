@@ -14,6 +14,8 @@ class UserModel(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     tg_id: Mapped[int] = mapped_column(unique=True, nullable=False)
     bitrix_user_id: Mapped[int] = mapped_column(nullable=False)
+    username: Mapped[str] = mapped_column(nullable=False)
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=True)
 
     role: Mapped[str] = mapped_column(
         String(60),

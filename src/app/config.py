@@ -28,6 +28,8 @@ class Settings(BaseSettings):
     AZURE_TENANT_ID: str
     AZURE_CLIENT_ID: str
     AZURE_CLIENT_SECRET: str
+    TELEGRAM_BOT_TOKEN: str
+    TELEGRAM_CHAT_ID: str
 
     model_config = SettingsConfigDict(
         env_file=".env",

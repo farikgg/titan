@@ -3,18 +3,18 @@ from src.schemas.user_schema import UserCreate, UserUpdate
 from src.repositories.user_repo import UserRepository
 from src.core.exceptions import (
                                 UserDoesNotExistError,
-                                UserCannotBeDeletedError, 
-                                UserUpdateError, 
+                                UserCannotBeDeletedError,
+                                UserUpdateError,
                                 UserCreateError
                                 )
+
 
 class UserService:
     def __init__(self, repo: UserRepository) -> None:
         self.repo = repo
 
     async def add_user(self, user_schema: UserCreate) -> UserModel:
-        user = UserModel(**user_schema.model_dump(exclude={"password"}))
-        user.password = user_schema.password
+        user = UserModel(**user_schema.model_dump())
         try:
             await self.repo.add(user)
             await self.repo.session.commit()
@@ -28,52 +28,35 @@ class UserService:
 
         if not user:
             raise UserDoesNotExistError()
-        
+
         return user
 
-    async def update_user_password(self, user_id: int, new_password: str) -> UserModel:
-        user = await self.repo.get_by_id(user_id)
-
-        if not user:
-            raise UserDoesNotExistError()
-        
-        result = await self.repo.update(user, data={'password' : new_password})
-        await self.repo.session.commit()
-        return result
-    
     async def update_user_fields(self, user_id: int, data: dict) -> UserModel:
-        '''принимает data: dict по типу {'password' : 'abc', 'role' : 'head_manager'}'''
         user = await self.repo.get_by_id(user_id)
 
         if not user:
             raise UserDoesNotExistError()
+
         try:
             user = await self.repo.update(user, data)
             await self.repo.session.commit()
         except Exception:
             await self.repo.session.rollback()
             raise UserUpdateError()
+
         return user
-    
+
     async def delete_user(self, user_id: int) -> bool:
         user = await self.repo.get_by_id(user_id)
 
         if not user:
             raise UserDoesNotExistError()
-        
+
         try:
             await self.repo.delete(user)
             await self.repo.session.commit()
         except Exception:
             await self.repo.session.rollback()
             raise UserCannotBeDeletedError()
-        
+
         return user_id
-
-    async def verify_password(self, user_id: int, password: str) -> bool:
-        user = await self.repo.get_by_id(user_id)
-
-        if not user:
-            raise UserDoesNotExistError()
-        
-        return user.check_password(password)

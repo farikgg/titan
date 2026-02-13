@@ -8,10 +8,13 @@ class UserBase(BaseModel):
     role: Role
 
 class UserCreate(UserBase):
-    password: str
+    tg_id: int
+    bitrix_user_id: int
 
 class UserRead(UserBase):
     id: int
+    tg_id: int
+    bitrix_user_id: int
 
     model_config = ConfigDict(
         from_attributes=True 
@@ -19,12 +22,4 @@ class UserRead(UserBase):
 
 class UserUpdate(BaseModel):
     username: Optional[str] = None
-    password: Optional[str] = None
     role: Optional[Role] = None
-    
-class UserPasswordCheck(BaseModel):
-    password: str
-
-class UserPasswordUpdate(BaseModel):
-    new_password: str
-

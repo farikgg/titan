@@ -7,7 +7,7 @@ from src.db.models.user_model import UserModel
 
 
 class UserRepository:
-    def __init__(self, session: AsyncSession) -> None:
+    def __init__(self, session: AsyncSession):
         self.session = session
 
     async def add(self, user: UserModel):
@@ -56,11 +56,27 @@ class UserRepository:
     async def check_password(self, user: UserModel, password: str):
         return user.check_password(password)
 
+    async def get_by_tg_id(self, tg_id: int):
+        result = await self.session.execute(
+            select(UserModel).where(UserModel.tg_id == tg_id)
+        )
+        return result.scalar_one_or_none()
 
     @staticmethod
-    async def get_by_tg_id(tg_id: int):
+    async def create(tg_id: int, username: str):
         async with async_session() as session:
-            result = await session.execute(
-                select(UserModel).where(UserModel.tg_id == tg_id)
+            user = UserModel(
+                tg_id=tg_id,
+                username=username or "unknown"
             )
-            return result.scalar_one_or_none()
+            session.add(user)
+            await session.commit()
+            await session.refresh(user)
+            return user
+
+    @staticmethod
+    async def get_or_create(tg_id: int, username: str):
+        user = await UserRepository.get_by_tg_id(tg_id)
+        if user:
+            return user
+        return await UserRepository.create(tg_id, username)

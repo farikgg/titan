@@ -2,7 +2,10 @@ from src.repositories.price_repo import PriceRepository
 from src.services.price_service import PriceService, PriceCreate
 from src.services.fuchs_parser import FuchsAIParser
 from src.services.excel_parser import FuchsExcelParser
+from src.services.telegram_service import TelegramService
 from src.db.initialize import async_session
+from src.app.config import settings
+
 import logging
 
 logger = logging.getLogger(__name__)
@@ -58,6 +61,15 @@ async def process_fuchs_message(msg_dict: dict) -> str:
     if not valid_items:
         logger.info("AI returned items without prices, skipping save")
         return "No priced data"
+
+    tg = TelegramService()
+
+    await tg.send_message(
+        chat_id = settings.TELEGRAM_CHAT_ID,
+        text = f"Обработано письмо FUCHS\n"
+            f"Message ID: {message_id}\n"
+            f"Позиций: {len(items)}"
+    )
 
     async with async_session() as session:
         for item in valid_items:

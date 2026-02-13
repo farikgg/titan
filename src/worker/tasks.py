@@ -1,19 +1,16 @@
 import asyncio, logging
-from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
+from pathlib import Path
 
 from src.repositories.price_repo import PriceRepository
 from src.worker.celery_app import app
-from src.services.fuchs_parser import FuchsAIParser
 from src.services.mail_parser import EmailParser
-from src.services.price_service import PriceService, PriceCreate
+from src.services.price_service import PriceService
 from src.services.skf_service import SKFService
 from src.db.initialize import async_session
 from src.services.lock_service import lock_service
 from src.app.config import settings
-from src.db.models.pdf_generation import PdfGeneration
-from src.services.excel_parser import FuchsExcelParser
 from src.services.fuchs_pipeline import process_fuchs_message
+from src.services.telegram_service import TelegramService
 
 logger = logging.getLogger(__name__)
 
@@ -83,67 +80,6 @@ def parse_from_fuchs(self):
 )
 def ai_process(self, msg_dict):
     return run_async(process_fuchs_message(msg_dict))
-# def ai_process(self, msg_dict):
-#     try:
-#         ai_parser = FuchsAIParser()
-#         excel_parser = FuchsExcelParser()
-#         repo = PriceRepository()
-#
-#         async def _inner():
-#             async with async_session() as session:
-#                 exists = await repo.exists_by_message_id(
-#                     session,
-#                     msg_dict["message_ids"],
-#                 )
-#                 if exists:
-#                     logger.info(
-#                         "Письмо %s уже обработано, пропуск",
-#                         msg_dict["message_ids"],
-#                     )
-#                     return "Already processed"
-#
-#             if not ai_parser.is_not_spam(msg_dict["subject"], msg_dict["body"]):
-#                 return "Spam"
-#
-#             attachments = msg_dict.get("attachments", [])
-#             items: list[PriceCreate] = []
-#
-#             # 1️⃣ Excel — приоритет №1
-#             for att in attachments:
-#                 if att["name"].lower().endswith((".xls", ".xlsx")):
-#                     items = excel_parser.parse(att["content"])
-#                     if items:
-#                         logger.info("EXCEL PARSED: %s", len(items))
-#                         break
-#
-#             # 2️⃣ AI — только если Excel пуст
-#             if not items:
-#                 attachment_text = ai_parser.extract_text_from_attachments(attachments)
-#                 items = run_async(
-#                     ai_parser.parse_to_objects(
-#                         msg_dict["body"],
-#                         attachment_text,
-#                     )
-#                 )
-#
-#             if not items:
-#                 return "No data"
-#
-#             price_service = PriceService()
-#
-#
-#             async with async_session() as session:
-#                 for item in items:
-#                     item.email_message_id = msg_dict.get("message_ids")
-#                     await price_service.update_or_create(session, item)
-#                 await session.commit()
-#
-#             return f"Сохранено {len(items)} позиций"
-#         return run_async(_inner())
-#
-#     except IntegrityError as e:
-#         logger.warning("Проблема, идет дубликация: %s", e)
-#         return "Integrity skip"
 
 
 SKF_ARTICULS = ["278661", "644-46364-8", "085734"]
@@ -224,12 +160,12 @@ def process_deal_update(deal_id: int):
             return
 
         # запускаем PDF генерацию
-        generate_pdf_task.delay(deal_id, stage_id)
+        generate_pdf_task.delay(deal_id, stage_id, settings.TELEGRAM_CHAT_ID)
 
     run_async(_inner())
 
 
-async def generate_pdf(deal_id: int, stage_id: str):
+async def generate_pdf(deal_id: int, stage_id: str, chat_id: int):
     """
     Генерация PDF коммерческого предложения.
     """
@@ -284,6 +220,33 @@ async def generate_pdf(deal_id: int, stage_id: str):
             "currency": deal["CURRENCY_ID"],
         }
     )
+    pdf_path = Path(pdf_path)
+
+    if not pdf_path.exists():
+        logger.error("PDF не найден")
+        return None
+
+    tg = TelegramService()
+
+    await tg.send_message(
+        chat_id=chat_id,
+        text = f"PDF создан\n"
+               f"Сделка: {deal_id}\n"
+               f"Stage: {stage_id}"
+    )
+
+    await tg.send_document(
+        chat_id=chat_id,
+        file_path=pdf_path,
+        caption=f"Коммерческое предложение по сделке {deal_id}",
+    )
+
+    await tg.send_message(chat_id, f"🔍 Получаю данные сделки {deal_id}...")
+    await tg.send_message(chat_id, "📦 Получаю товары...")
+    await tg.send_message(chat_id, "💰 Рассчитываю цены...")
+    await tg.send_message(chat_id, "🧾 Генерирую PDF...")
+    await tg.send_message(chat_id, "✅ PDF успешно создан")
+    await tg.send_message(chat_id, "❌ Ошибка при создании PDF")
 
     logger.info(f"Создался PDF файл для сделки: {deal_id}, где он находиться: {pdf_path}")
     return pdf_path
@@ -298,8 +261,8 @@ async def generate_pdf(deal_id: int, stage_id: str):
     soft_time_limit=480,
     name="src.worker.tasks.generate_pdf_task",
 )
-def generate_pdf_task(self, deal_id: int, stage_id: str):
-    return run_async(generate_pdf(deal_id, stage_id))
+def generate_pdf_task(self, deal_id: int, stage_id: str, chat_id: int):
+    return run_async(generate_pdf(deal_id, stage_id, chat_id))
 
 
 @app.task(name="src.worker.tasks.sync_skf_bulk")
