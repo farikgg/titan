@@ -1,6 +1,7 @@
 import asyncio, logging
 from pathlib import Path
 
+from src.db.models.offer_model import OfferStatus
 from src.repositories.price_repo import PriceRepository
 from src.worker.celery_app import app
 from src.services.mail_parser import EmailParser
@@ -160,97 +161,183 @@ def process_deal_update(deal_id: int):
             return
 
         # запускаем PDF генерацию
-        generate_pdf_task.delay(deal_id, stage_id, settings.TELEGRAM_CHAT_ID)
+        generate_offer_pdf_task.delay(deal_id, stage_id, settings.TELEGRAM_CHAT_ID)
 
     run_async(_inner())
 
 
-async def generate_pdf(deal_id: int, stage_id: str, chat_id: int):
-    """
-    Генерация PDF коммерческого предложения.
-    """
-    from src.core.bitrix import get_bitrix_client
-    from src.services.bitrix_service import BitrixService
-    from src.services.price_service import PriceService
+# async def generate_pdf(deal_id: int, stage_id: str, chat_id: int):
+#     from src.core.bitrix import get_bitrix_client
+#     from src.services.bitrix_service import BitrixService
+#     from src.services.price_service import PriceService
+#     from src.services.pdf_service import PdfService
+#     from src.db.models.pdf_generation import PdfGeneration
+#     from sqlalchemy import select
+#     from src.db.initialize import async_session
+#
+#     tg = TelegramService()
+#
+#     # 1. Отправляем одно сообщение прогресса
+#     progress = await tg.send_message(
+#         chat_id,
+#         "🔄 Запуск генерации PDF..."
+#     )
+#
+#     try:
+#         await tg.edit_message(chat_id, progress["message_id"], "🔍 Получаю данные сделки...")
+#
+#         bx = get_bitrix_client()
+#         bitrix_service = BitrixService(bx)
+#
+#         deal = await bitrix_service.get_deal(deal_id)
+#         if not deal:
+#             await tg.edit_message(chat_id, progress["message_id"], "❌ Сделка не найдена")
+#             return None
+#
+#         await tg.edit_message(chat_id, progress["message_id"], "📦 Получаю товары...")
+#
+#         products = await bitrix_service.get_deal_products(deal_id)
+#
+#         await tg.edit_message(chat_id, progress["message_id"], "💰 Рассчитываю цены...")
+#
+#         price_service = PriceService()
+#
+#         async with async_session() as session:
+#             skus = [p["PRODUCT_ID"] for p in products]
+#
+#             resolved_prices = await price_service.resolve_prices(
+#                 db=session,
+#                 skus=skus,
+#                 source="fuchs",
+#             )
+#
+#         await tg.edit_message(chat_id, progress["message_id"], "🧾 Генерирую PDF...")
+#
+#         pdf_service = PdfService()
+#
+#         pdf_path = pdf_service.generate_offer(
+#             deal={
+#                 "id": deal_id,
+#                 "title": deal.get("TITLE"),
+#                 "items": resolved_prices,
+#                 "currency": deal.get("CURRENCY_ID"),
+#             }
+#         )
+#
+#         pdf_path = Path(pdf_path)
+#
+#         if not pdf_path.exists():
+#             await tg.edit_message(chat_id, progress["message_id"], "❌ PDF не создан")
+#             return None
+#
+#         await tg.edit_message(chat_id, progress["message_id"], "✅ PDF готов. Отправляю файл...")
+#
+#         await tg.send_document(
+#             chat_id=chat_id,
+#             file_path=pdf_path,
+#             caption=f"Коммерческое предложение по сделке {deal_id}",
+#         )
+#
+#         return pdf_path
+#
+#     except Exception as e:
+#         logger.exception(e)
+#         await tg.edit_message(chat_id, progress["message_id"], "❌ Ошибка при создании PDF")
+#         raise
+
+async def _generate_offer_pdf(offer_id: int, chat_id: int):
+
     from src.services.pdf_service import PdfService
-    from src.db.models.pdf_generation import PdfGeneration
-    from sqlalchemy import select
     from src.db.initialize import async_session
-
-    bx = get_bitrix_client()
-    bitrix_service = BitrixService(bx)
-    price_service = PriceService()
-    pdf_service = PdfService()
-
-    deal = await bitrix_service.get_deal(deal_id)
-    if not deal:
-        logger.error(f"Сделка: {deal_id} не найдена для PDF файла")
-        return None
-
-    async with async_session() as session:
-        exists = await session.scalar(
-            select(PdfGeneration.id).where(
-                PdfGeneration.deal_id == deal_id,
-                PdfGeneration.stage_id == stage_id,
-            )
-        )
-        if exists:
-            logger.info(f"PDF файл уже был создан для сделки: {deal_id}")
-            return "PDF файл уже был создан"
-
-        session.add(PdfGeneration(deal_id=deal_id, stage_id=stage_id))
-        await session.commit()
-
-    products = await bitrix_service.get_deal_products(deal_id)
-
-    async with async_session() as session:
-        skus = [p["PRODUCT_ID"] for p in products]
-
-        resolved_prices = await price_service.resolve_prices(
-            db=session,
-            skus=skus,
-            source="fuchs",
-        )
-
-    pdf_path = pdf_service.generate_offer(
-        deal={
-            "id": deal_id,
-            "title": deal["TITLE"],
-            "items": resolved_prices,
-            "currency": deal["CURRENCY_ID"],
-        }
-    )
-    pdf_path = Path(pdf_path)
-
-    if not pdf_path.exists():
-        logger.error("PDF не найден")
-        return None
+    from src.db.models.offer_model import OfferModel
+    from src.db.models.audit_log import AuditLog
+    from src.services.telegram_service import TelegramService
 
     tg = TelegramService()
+    pdf_service = PdfService()
 
-    await tg.send_message(
-        chat_id=chat_id,
-        text = f"PDF создан\n"
-               f"Сделка: {deal_id}\n"
-               f"Stage: {stage_id}"
-    )
+    async with async_session() as session:
 
-    await tg.send_document(
-        chat_id=chat_id,
-        file_path=pdf_path,
-        caption=f"Коммерческое предложение по сделке {deal_id}",
-    )
+        offer = await session.get(OfferModel, offer_id)
 
-    await tg.send_message(chat_id, f"🔍 Получаю данные сделки {deal_id}...")
-    await tg.send_message(chat_id, "📦 Получаю товары...")
-    await tg.send_message(chat_id, "💰 Рассчитываю цены...")
-    await tg.send_message(chat_id, "🧾 Генерирую PDF...")
-    await tg.send_message(chat_id, "✅ PDF успешно создан")
-    await tg.send_message(chat_id, "❌ Ошибка при создании PDF")
+        if not offer:
+            await tg.send_message(chat_id, "❌ Offer не найден")
+            return
 
-    logger.info(f"Создался PDF файл для сделки: {deal_id}, где он находиться: {pdf_path}")
-    return pdf_path
+        # БЛОКИРОВКА ОТ ДУБЛЕЙ
+        if offer.is_generating:
+            await tg.send_message(chat_id, "⏳ PDF уже генерируется...")
+            return
 
+        offer.is_generating = True
+        await session.commit()
+
+    progress = await tg.send_message(chat_id, "🧾 Генерирую PDF...")
+
+    try:
+
+        async with async_session() as session:
+            offer = await session.get(OfferModel, offer_id)
+
+            items = offer.items  # если relationship настроен
+
+            pdf_path = pdf_service.generate_offer(
+                deal={
+                    "id": offer.id,
+                    "title": f"КП #{offer.id}",
+                    "items": [
+                        {
+                            "name": i.name,
+                            "price": float(i.price),
+                            "quantity": i.quantity,
+                            "total": float(i.total),
+                        }
+                        for i in items
+                    ],
+                }
+            )
+
+            offer.pdf_path = pdf_path
+            offer.status = OfferStatus.GENERATED
+            offer.is_generating = False
+
+            session.add(
+                AuditLog(
+                    actor_type="user",
+                    actor_id=offer.user_id,
+                    action="offer_pdf_generated",
+                    payload={"offer_id": offer.id},
+                )
+            )
+
+            await session.commit()
+
+        await tg.edit_message(
+            chat_id,
+            progress["message_id"],
+            "✅ PDF готов"
+        )
+
+        await tg.send_document(
+            chat_id,
+            Path(pdf_path),
+            caption=f"Коммерческое предложение #{offer_id}"
+        )
+
+    except Exception as e:
+
+        async with async_session() as session:
+            offer = await session.get(OfferModel, offer_id)
+            offer.is_generating = False
+            await session.commit()
+
+        await tg.edit_message(
+            chat_id,
+            progress["message_id"],
+            "❌ Ошибка генерации"
+        )
+
+        raise
 
 @app.task(
     bind=True,
@@ -261,8 +348,8 @@ async def generate_pdf(deal_id: int, stage_id: str, chat_id: int):
     soft_time_limit=480,
     name="src.worker.tasks.generate_pdf_task",
 )
-def generate_pdf_task(self, deal_id: int, stage_id: str, chat_id: int):
-    return run_async(generate_pdf(deal_id, stage_id, chat_id))
+def generate_offer_pdf_task(self, offer_id: int, chat_id: int):
+    return run_async(_generate_offer_pdf(offer_id, chat_id))
 
 
 @app.task(name="src.worker.tasks.sync_skf_bulk")

@@ -11,10 +11,6 @@ from src.db.initialize import Base
 from src.db import models
 from src.app.config import settings
 
-# Импорт моделей для Alembic
-from src.db.models.price import PriceModel
-from src.db.models.user_model import UserModel
-
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
@@ -29,6 +25,7 @@ if config.config_file_name is not None:
 # from myapp import mymodel
 # target_metadata = mymodel.Base.metadata
 target_metadata = Base.metadata
+config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
 
 # other values from the config, defined by the needs of env.py,
 # can be acquired:

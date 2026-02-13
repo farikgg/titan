@@ -1,14 +1,18 @@
 from src.db.models.audit_log import AuditLog
 
 class AuditService:
-    @staticmethod
-    async def log(session, action: str, payload: dict, actor_id=None):
-        session.add(
-            AuditLog(
-                actor_type="user" if actor_id else "system",
-                actor_id=actor_id,
-                action=action,
-                payload=payload,
-            )
+
+    def __init__(self, db):
+        self.db = db
+
+    async def log(self, actor_type: str, actor_id: int | None, action: str, payload: dict):
+
+        log = AuditLog(
+            actor_type=actor_type,
+            actor_id=actor_id,
+            action=action,
+            payload=payload,
         )
-        await session.commit()
+
+        self.db.add(log)
+        await self.db.flush()

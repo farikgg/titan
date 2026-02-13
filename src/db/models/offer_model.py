@@ -33,6 +33,8 @@ class OfferModel(Base):
     created_at: Mapped[datetime] = mapped_column(
         server_default=func.now()
     )
+    is_generating: Mapped[bool] = mapped_column(default=False)
+    pdf_path: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     items = relationship(
         "OfferItemModel",

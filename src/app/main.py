@@ -8,6 +8,7 @@ from src.api.v1.parse.router import router as sync_now_parser
 from src.api.v1.deals.router import router as deals_router
 from src.api.v1.webhooks.router import router as webhooks_router
 from src.api.v1.telegram.router import router as telegram_router
+from src.api.v1.offers.router import router as offer_router
 
 
 from src.core.exceptions import *
@@ -25,6 +26,7 @@ app.include_router(sync_now_parser)
 app.include_router(deals_router)
 app.include_router(webhooks_router)
 app.include_router(telegram_router)
+app.include_router(offer_router)
 
 @app.get("/health")
 async def check_health():
