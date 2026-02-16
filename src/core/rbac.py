@@ -1,5 +1,4 @@
 from fastapi import Depends, HTTPException, status
-from src.core.auth import get_tg_user
 from src.core.enums import Role
 
 ROLE_LEVELS = {
@@ -25,6 +24,7 @@ POLICIES = {
 
 
 def require_min_role(min_role: Role):
+    from src.core.auth import get_tg_user
     min_level = ROLE_LEVELS[min_role]
 
     def checker(user=Depends(get_tg_user)):

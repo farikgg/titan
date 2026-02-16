@@ -1,7 +1,7 @@
 import pytest
 from decimal import Decimal
 from src.schemas.price_schema import PriceCreate
-from src.db.models.price import Source, SourceType
+from src.db.models.price_model import Source, SourceType
 from src.repositories.price_repo import PriceRepository
 
 @pytest.mark.asyncio

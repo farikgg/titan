@@ -5,9 +5,11 @@ from src.services.telegram_service import TelegramService
 from src.worker.tasks import generate_offer_pdf_task
 from src.repositories.user_repo import UserRepository
 from src.services.offer_service import OfferService
-from src.db.models.price import PriceModel
+from src.db.models.price_model import PriceModel
+from src.core.enums import Role
 
 from src.db.initialize import async_session
+from src.worker.tasks import parse_from_fuchs, sync_skf_prices_task
 
 router = APIRouter(prefix="/telegram", tags=["telegram"])
 
@@ -39,20 +41,29 @@ async def telegram_webhook(update: dict):
 
             # ---------------- MAIN MENU ----------------
             if data == "menu:main":
+                keyboard = [
+                    [{"text": "🛒 Моя корзина", "callback_data": "cart"}],
+                    [{"text": "➕ Добавить товар", "callback_data": "add"}],
+                    [{"text": "❌ Очистить", "callback_data": "clear"}],
+                    [{"text": "📄 Создать PDF", "callback_data": "generate"}],
+                    [{"text": "🏢 Создать сделку", "callback_data": "convert"}],
+                    [{"text": "📚 История КП", "callback_data": "history"}],
+                ]
+
+                # --- sync кнопки только для админа ---
+                if user.role in (Role.admin.value, Role.head_manager.value):
+                    keyboard.append(
+                        [{"text": "📬 Синхронизация FUCHS", "callback_data": "sync:fuchs"}]
+                    )
+                    keyboard.append(
+                        [{"text": "🔄 Синхронизация SKF", "callback_data": "sync:skf"}]
+                    )
+
                 return await tg.edit_message(
                     chat_id,
                     message_id,
                     "Главное меню",
-                    {
-                        "inline_keyboard": [
-                            [{"text": "🛒 Моя корзина", "callback_data": "cart"}],
-                            [{"text": "➕ Добавить товар", "callback_data": "add"}],
-                            [{"text": "❌ Очистить", "callback_data": "clear"}],
-                            [{"text": "📄 Создать PDF", "callback_data": "generate"}],
-                            [{"text": "🏢 Создать сделку", "callback_data": "convert"}],
-                            [{"text": "📚 История КП", "callback_data": "history"}],
-                        ]
-                    },
+                    {"inline_keyboard": keyboard},
                 )
 
             # ---------------- ADD MENU ----------------
@@ -79,6 +90,39 @@ async def telegram_webhook(update: dict):
                     message_id,
                     "Выберите товар:",
                     {"inline_keyboard": keyboard},
+                )
+
+            if data == "sync:fuchs":
+                if user.role not in (Role.admin.value, Role.head_manager.value):
+                    return await tg.edit_message(chat_id, message_id, "Нет доступа")
+
+                parse_from_fuchs.delay()
+                return await tg.edit_message(
+                    chat_id,
+                    message_id,
+                    "📬 FUCHS парсинг запущен",
+                    {
+                        "inline_keyboard": [
+                            [{"text": "⬅ Назад", "callback_data": "menu:main"}]
+                        ]
+                    },
+                )
+
+
+            if data == "sync:skf":
+                if user.role not in (Role.admin.value, Role.head_manager.value):
+                    return await tg.edit_message(chat_id, message_id, "Нет доступа")
+
+                sync_skf_prices_task.delay()
+                return await tg.edit_message(
+                    chat_id,
+                    message_id,
+                    "🔄 SKF sync запущен",
+                    {
+                        "inline_keyboard": [
+                            [{"text": "⬅ Назад", "callback_data": "menu:main"}]
+                        ]
+                    }
                 )
 
             # ---------------- ADD ITEM ----------------
@@ -201,7 +245,29 @@ async def telegram_webhook(update: dict):
             )
             return {"ok": True}
 
-        await tg.send_main_menu(chat_id)
+        keyboard = [
+            [{"text": "🛒 Моя корзина", "callback_data": "cart"}],
+            [{"text": "➕ Добавить товар", "callback_data": "add"}],
+            [{"text": "❌ Очистить", "callback_data": "clear"}],
+            [{"text": "📄 Создать PDF", "callback_data": "generate"}],
+            [{"text": "🏢 Создать сделку", "callback_data": "convert"}],
+            [{"text": "📚 История КП", "callback_data": "history"}],
+        ]
+
+        if user.role in (Role.admin.value, Role.head_manager.value):
+            keyboard.append(
+                [{"text": "📬 Синхронизация FUCHS", "callback_data": "sync:fuchs"}]
+            )
+            keyboard.append(
+                [{"text": "🔄 Синхронизация SKF", "callback_data": "sync:skf"}]
+            )
+
+        await tg.send_message(
+            chat_id,
+            "Главное меню",
+            {"inline_keyboard": keyboard},
+        )
+
         return {"ok": True}
 
     return {"ok": True}

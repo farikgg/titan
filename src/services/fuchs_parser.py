@@ -54,7 +54,7 @@ class FuchsAIParser:
                             if text:
                                 file_text += text + "\n"
 
-                elif name.endswith(".docx"):
+                elif name.endswith(".xlsx"):
                     sheets = pd.read_excel(BytesIO(content), sheet_name=None)
                     for sheet_name, df in sheets.items():
                         df = df.rename(str.lower, axis=1)
@@ -63,7 +63,7 @@ class FuchsAIParser:
                             "sap number": "art",
                             "price €/piece": "price",
                         }
-                        if not all(col in df.collumns for col in required_cols):
+                        if not all(col in df.columns for col in required_cols):
                             continue
                         for _, row in df.iterrows():
                             art = str(row["sap number"]).strip()

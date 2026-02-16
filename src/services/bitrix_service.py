@@ -62,12 +62,18 @@ class BitrixService:
             )
             return []
 
-    async def create_deal(self, fields: Dict) -> Optional[int]:
+    async def create_deal(self, title: str, amount: float) -> Optional[int]:
         try:
             result = await to_thread.run_sync(
                 self.bx.call,
                 "crm.deal.add",
-                {"fields": fields},
+                {
+                    "fields": {
+                        "TITLE": title,
+                        "OPPORTUNITY": amount,
+                        "CURRENCY_ID": "KZT",
+                    }
+                },
             )
             return int(result)
         except Exception:

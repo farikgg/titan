@@ -16,40 +16,41 @@ async def process_fuchs_message(msg_dict: dict) -> str:
     excel_parser = FuchsExcelParser()
     repo = PriceRepository()
     price_service = PriceService()
+    tg = TelegramService()
 
     raw_message_id = msg_dict.get("message_ids")
 
-    if isinstance(raw_message_id, list):
-        message_id = raw_message_id[0]
-    else:
-        message_id = raw_message_id
+    message_id = (
+        raw_message_id[0]
+        if isinstance(raw_message_id, list)
+        else raw_message_id
+    )
 
-    async with async_session() as session:
-        exists = await repo.exists_by_message_id(
-            session,
-            message_id,
-        )
-        if exists:
-            return "Already processed"
+    if not message_id:
+        return "No message id"
 
-    if not ai_parser.is_not_spam(msg_dict["subject"], msg_dict["body"]):
+    # -------- SPAM CHECK --------
+    if not ai_parser.is_not_spam(
+        msg_dict.get("subject", ""),
+        msg_dict.get("body", ""),
+    ):
         return "Spam"
 
     attachments = msg_dict.get("attachments", [])
     items: list[PriceCreate] = []
 
-    # 1️⃣ Excel
+    # -------- 1. Excel --------
     for att in attachments:
         if att["name"].lower().endswith((".xls", ".xlsx")):
             items = excel_parser.parse(att["content"])
             if items:
                 break
 
-    # 2️⃣ AI fallback
+    # -------- 2. AI fallback --------
     if not items:
         attachment_text = ai_parser.extract_text_from_attachments(attachments)
         items = await ai_parser.parse_to_objects(
-            msg_dict["body"],
+            msg_dict.get("body", ""),
             attachment_text,
         )
 
@@ -62,19 +63,28 @@ async def process_fuchs_message(msg_dict: dict) -> str:
         logger.info("AI returned items without prices, skipping save")
         return "No priced data"
 
-    tg = TelegramService()
-
-    await tg.send_message(
-        chat_id = settings.TELEGRAM_CHAT_ID,
-        text = f"Обработано письмо FUCHS\n"
-            f"Message ID: {message_id}\n"
-            f"Позиций: {len(items)}"
-    )
-
+    # -------- DB SAVE (atomic) --------
     async with async_session() as session:
+
+        exists = await repo.exists_by_message_id(session, message_id)
+        if exists:
+            return "Already processed"
+
         for item in valid_items:
             item.email_message_id = message_id
             await price_service.update_or_create(session, item)
+
         await session.commit()
 
-    return f"Сохранено: {len(valid_items)}"
+    # -------- TELEGRAM AFTER COMMIT --------
+    await tg.send_message(
+        chat_id=settings.TELEGRAM_CHAT_ID,
+        text=(
+            f"Обработано письмо FUCHS\n"
+            f"Message ID: {message_id}\n"
+            f"Позиций: {len(valid_items)}"
+        ),
+    )
+
+    return f"Saved: {len(valid_items)}"
+

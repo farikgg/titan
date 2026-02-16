@@ -42,4 +42,6 @@ app.conf.task_routes = {
     'src.worker.tasks.sync_skf_bulk': {'queue': 'default'},
 }
 
-app.conf.worker_pool = "solo"
+# app.conf.worker_pool = "solo" # убрать на проде
+app.conf.task_acks_late = True
+app.conf.task_reject_on_worker_lost = True

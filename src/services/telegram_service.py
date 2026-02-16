@@ -13,15 +13,19 @@ class TelegramService:
     async def send_message(self,chat_id: int, text: str, keyboard: dict | None = None):
         try:
             async with httpx.AsyncClient(timeout=10) as client:
+                payload: dict[str, object] = {
+                    "chat_id": chat_id,
+                    "text": text,
+                }
+
+                if keyboard:
+                    payload["reply_markup"] = keyboard
+
                 response = await client.post(
                     f"{self.base_url}/sendMessage",
-                    json={
-                        "chat_id": chat_id,
-                        "text": text,
-                        "reply_markup": keyboard,
-                    },
+                    json = payload
                 )
-            logger.info("TELEGRAM ответ:", response.status_code, response.text)
+            logger.info("TELEGRAM ответ: %s %s", response.status_code, response.text)
             return response.json()
         except Exception as e:
             logger.exception(f"Ошибка при отправления сообщения: {e}")
@@ -29,14 +33,18 @@ class TelegramService:
     async def edit_message(self, chat_id: int, message_id: int, text: str, keyboard: dict | None = None):
         try:
             async with httpx.AsyncClient(timeout=10) as client:
+                payload: dict[str, object] = {
+                    "chat_id": chat_id,
+                    "message_id": message_id,
+                    "text": text,
+                }
+
+                if keyboard:
+                    payload["reply_markup"] = keyboard
+
                 await client.post(
                     f"{self.base_url}/editMessageText",
-                    json={
-                        "chat_id": chat_id,
-                        "message_id": message_id,
-                        "text": text,
-                        "reply_markup": keyboard,
-                    },
+                    json = payload,
                 )
         except Exception as e:
             logger.exception(f"Ошибка при редактирование сообщения: {e}")
@@ -58,23 +66,6 @@ class TelegramService:
         except Exception as e:
             logger.exception(f"Ошибка при отправления документа: {e}")
 
-    async def send_main_menu(self, chat_id: int):
-        keyboard = {
-            "inline_keyboard": [
-                [{"text": "🛒 Моя корзина", "callback_data": "cart"}],
-                [{"text": "➕ Добавить товар", "callback_data": "add"}],
-                [{"text": "❌ Очистить", "callback_data": "clear"}],
-                [{"text": "📄 Создать PDF", "callback_data": "pdf"}],
-                [{"text": "🏢 Создать сделку", "callback_data": "convert"}],
-                [{"text": "📚 История КП", "callback_data": "history"}],
-            ]
-        }
-
-        return await self.send_message(
-            chat_id,
-            "Главное меню",
-            keyboard,
-        )
 
     async def send_pdf_menu(self, chat_id: int):
         keyboard = {

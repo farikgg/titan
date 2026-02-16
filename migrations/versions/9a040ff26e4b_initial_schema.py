@@ -1,8 +1,8 @@
-"""initial full schema
+"""initial_schema
 
-Revision ID: 7d8d8e4fbcd6
+Revision ID: 9a040ff26e4b
 Revises: 
-Create Date: 2026-02-13 16:41:39.880785
+Create Date: 2026-02-16 12:50:09.020631
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = '7d8d8e4fbcd6'
+revision: str = '9a040ff26e4b'
 down_revision: Union[str, Sequence[str], None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -29,6 +29,49 @@ def upgrade() -> None:
     sa.Column('payload', sa.JSON(), nullable=False),
     sa.Column('created_at', sa.DateTime(), server_default=sa.text('now()'), nullable=False),
     sa.PrimaryKeyConstraint('id')
+    )
+    op.create_table('email_processing',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('message_id', sa.String(), nullable=False),
+    sa.Column('status', sa.String(length=20), nullable=False),
+    sa.Column('created_at', sa.DateTime(), server_default=sa.text('now()'), nullable=False),
+    sa.PrimaryKeyConstraint('id')
+    )
+    op.create_index(op.f('ix_email_processing_message_id'), 'email_processing', ['message_id'], unique=True)
+    op.create_table('pdf_generations',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('deal_id', sa.Integer(), nullable=False),
+    sa.Column('stage_id', sa.String(length=50), nullable=False),
+    sa.Column('created_at', sa.DateTime(), server_default=sa.text('now()'), nullable=False),
+    sa.PrimaryKeyConstraint('id')
+    )
+    op.create_index(op.f('ix_pdf_generations_deal_id'), 'pdf_generations', ['deal_id'], unique=False)
+    op.create_table('prices',
+    sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
+    sa.Column('email_message_id', sa.String(length=255), nullable=True),
+    sa.Column('art', sa.String(length=100), nullable=False),
+    sa.Column('name', sa.String(length=500), nullable=False),
+    sa.Column('description', sa.Text(), nullable=True),
+    sa.Column('price', sa.Numeric(precision=12, scale=2), nullable=False),
+    sa.Column('currency', sa.String(length=3), nullable=False),
+    sa.Column('source', sa.Enum('FUCHS', 'SKF', name='source'), nullable=False),
+    sa.Column('source_type', sa.Enum('EMAIL', 'API', name='sourcetype'), nullable=False),
+    sa.Column('updated_at', sa.DateTime(), server_default=sa.text('now()'), nullable=False),
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('art', 'source', name='uq_price_art_source')
+    )
+    op.create_index(op.f('ix_prices_art'), 'prices', ['art'], unique=False)
+    op.create_index(op.f('ix_prices_email_message_id'), 'prices', ['email_message_id'], unique=False)
+    op.create_table('users',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('tg_id', sa.Integer(), nullable=False),
+    sa.Column('bitrix_user_id', sa.Integer(), nullable=False),
+    sa.Column('username', sa.String(), nullable=False),
+    sa.Column('password_hash', sa.String(length=255), nullable=True),
+    sa.Column('role', sa.String(length=60), server_default='manager', nullable=False),
+    sa.CheckConstraint("role in ('manager', 'head-manager', 'admin')"),
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('tg_id')
     )
     op.create_table('webhook_logs',
     sa.Column('id', sa.Integer(), nullable=False),
@@ -74,5 +117,13 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_offers_user_id'), table_name='offers')
     op.drop_table('offers')
     op.drop_table('webhook_logs')
+    op.drop_table('users')
+    op.drop_index(op.f('ix_prices_email_message_id'), table_name='prices')
+    op.drop_index(op.f('ix_prices_art'), table_name='prices')
+    op.drop_table('prices')
+    op.drop_index(op.f('ix_pdf_generations_deal_id'), table_name='pdf_generations')
+    op.drop_table('pdf_generations')
+    op.drop_index(op.f('ix_email_processing_message_id'), table_name='email_processing')
+    op.drop_table('email_processing')
     op.drop_table('audit_logs')
     # ### end Alembic commands ###

@@ -3,7 +3,7 @@ from datetime import datetime
 from decimal import Decimal
 
 from sqlalchemy.orm import Mapped, mapped_column
-from sqlalchemy import String, Numeric, Enum, func, Text, UniqueConstraint
+from sqlalchemy import String, Numeric, Enum, func, Text, UniqueConstraint, DateTime
 
 from src.db.initialize import Base
 
@@ -22,7 +22,7 @@ class PriceModel(Base):
     __tablename__ = "prices"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    email_message_id: Mapped[str | None] = mapped_column(String(255), unique=True, nullable=True, index=True)
+    email_message_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
     art: Mapped[str] = mapped_column(String(100), index=True)
     name: Mapped[str] = mapped_column(String(500))
     description: Mapped[str] = mapped_column(Text, nullable=True)
@@ -34,4 +34,15 @@ class PriceModel(Base):
 
     __table_args__ = (
         UniqueConstraint("art", "source", name="uq_price_art_source"),
+    )
+
+class EmailProcessing(Base):
+    __tablename__ = "email_processing"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    message_id: Mapped[str] = mapped_column(String, unique=True, index=True)
+    status: Mapped[str] = mapped_column(String(20))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        server_default=func.now()
     )

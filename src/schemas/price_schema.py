@@ -3,7 +3,7 @@ from decimal import Decimal
 from datetime import datetime
 from typing import Optional
 
-from src.db.models.price import Source, SourceType
+from src.db.models.price_model import Source, SourceType
 
 
 class PriceBase(BaseModel):

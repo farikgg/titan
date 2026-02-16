@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 
 from src.app.config import settings
 from src.schemas.price_schema import PriceCreate
-from src.db.models.price import Source, SourceType
+from src.db.models.price_model import Source, SourceType
 
 logger = logging.getLogger(__name__)
 
@@ -27,10 +27,11 @@ class SKFService:
                 "apiKey": settings.SKF_API_KEY,
                 "Accept": "application/json",
             },
-            timeout=10.0,
+            timeout=httpx.Timeout(40.0, connect=10.0),
         ) as client:
             try:
                 resp = await client.post(self.URL, json=payload)
+                resp.raise_for_status()
                 data = resp.json()
 
                 if data.get("message"):

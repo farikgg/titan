@@ -1,4 +1,4 @@
-from .price import *
+from .price_model import *
 from .pdf_generation import *
 from .audit_log import *
 from .offer_model import *

@@ -1,7 +1,7 @@
 # tests/factories/excel_factory.py
 
 from src.schemas.price_schema import PriceCreate
-from src.db.models.price import Source, SourceType
+from src.db.models.price_model import Source, SourceType
 
 
 def excel_prices():

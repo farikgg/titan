@@ -2,7 +2,7 @@ from sqlalchemy import select, exists
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.db.models.price import PriceModel
+from src.db.models.price_model import PriceModel
 from src.schemas.price_schema import PriceCreate
 
 

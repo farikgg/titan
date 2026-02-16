@@ -76,7 +76,9 @@ class UserRepository:
 
     @staticmethod
     async def get_or_create(tg_id: int, username: str):
-        user = await UserRepository.get_by_tg_id(tg_id)
+        async with async_session() as session:
+            repo = UserRepository(session)
+            user = await repo.get_by_tg_id(tg_id)
         if user:
             return user
         return await UserRepository.create(tg_id, username)

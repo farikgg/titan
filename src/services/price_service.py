@@ -6,7 +6,7 @@ from typing import Iterable
 from src.schemas.price_schema import PriceCreate
 from src.repositories.price_repo import PriceRepository
 from src.core.exceptions import PriceDoesNotExists
-from src.db.models.price import Source
+from src.db.models.price_model import Source
 
 logger = logging.getLogger(__name__)
 
