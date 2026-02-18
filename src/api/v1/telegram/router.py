@@ -33,7 +33,7 @@ async def telegram_webhook(update: dict):
             user = await repo.get_by_tg_id(tg_id)
 
             if not user:
-                await tg.edit_message(chat_id, message_id, "Нет доступа")
+                await tg.edit_message(chat_id, message_id, "Нет доступа", tg.back_button())
                 return {"ok": True}
 
             offer_service = OfferService(session)
@@ -94,7 +94,7 @@ async def telegram_webhook(update: dict):
 
             if data == "sync:fuchs":
                 if user.role not in (Role.admin.value, Role.head_manager.value):
-                    return await tg.edit_message(chat_id, message_id, "Нет доступа")
+                    return await tg.edit_message(chat_id, message_id, "Нет доступа", tg.back_button())
 
                 parse_from_fuchs.delay()
                 return await tg.edit_message(
@@ -111,7 +111,7 @@ async def telegram_webhook(update: dict):
 
             if data == "sync:skf":
                 if user.role not in (Role.admin.value, Role.head_manager.value):
-                    return await tg.edit_message(chat_id, message_id, "Нет доступа")
+                    return await tg.edit_message(chat_id, message_id, "Нет доступа", tg.back_button())
 
                 sync_skf_prices_task.delay()
                 return await tg.edit_message(
@@ -153,6 +153,7 @@ async def telegram_webhook(update: dict):
                         chat_id,
                         message_id,
                         "🛒 Корзина пуста",
+                        tg.back_button()
                     )
 
                 text = "🛒 Твоя корзина:\n\n"
@@ -163,7 +164,7 @@ async def telegram_webhook(update: dict):
 
                 text += f"💰 Итого: {result['total']}"
 
-                return await tg.edit_message(chat_id, message_id, text)
+                return await tg.edit_message(chat_id, message_id, text, tg.back_button())
 
             # ---------------- CLEAR ----------------
             if data == "clear":
@@ -184,6 +185,7 @@ async def telegram_webhook(update: dict):
                     chat_id,
                     message_id,
                     "⏳ Генерация PDF запущена",
+                    tg.back_button()
                 )
 
             # ---------------- CONVERT ----------------
@@ -206,6 +208,7 @@ async def telegram_webhook(update: dict):
                         chat_id,
                         message_id,
                         "У вас пока нет КП",
+                        tg.back_button()
                     )
 
                 text = "📚 История КП:\n\n"
@@ -218,7 +221,7 @@ async def telegram_webhook(update: dict):
                         f"Deal: {o['bitrix_deal_id']}\n"
                     )
 
-                return await tg.edit_message(chat_id, message_id, text)
+                return await tg.edit_message(chat_id, message_id, text, tg.back_button())
 
         return {"ok": True}
 

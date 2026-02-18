@@ -29,6 +29,7 @@ class TelegramService:
             return response.json()
         except Exception as e:
             logger.exception(f"Ошибка при отправления сообщения: {e}")
+            return None
 
     async def edit_message(self, chat_id: int, message_id: int, text: str, keyboard: dict | None = None):
         try:
@@ -84,3 +85,6 @@ class TelegramService:
             "Выберите сделку для генераций PDF:",
             keyboard,
         )
+
+    def back_button(self):
+        return {"inline_keyboard": [[{"text": "⬅ Назад", "callback_data": "menu:main"}]]}

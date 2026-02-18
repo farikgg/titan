@@ -22,16 +22,31 @@ class SKFService:
             "RequiredQuantity": "1",
         }
 
+        timeout = httpx.Timeout(connect=10.0, read=60.0, write=10.0, pool=10.0)
+
         async with httpx.AsyncClient(
             headers={
                 "apiKey": settings.SKF_API_KEY,
                 "Accept": "application/json",
             },
-            timeout=httpx.Timeout(40.0, connect=10.0),
+            timeout=timeout,
         ) as client:
+
+            logger.info("SKF request", extra={"sku": sku, "payload": payload})
+
             try:
                 resp = await client.post(self.URL, json=payload)
                 resp.raise_for_status()
+
+                logger.info(
+                    "SKF response",
+                    extra={
+                        "sku": sku,
+                        "status": resp.status_code,
+                        "body": resp.text[:500],
+                    },
+                )
+
                 data = resp.json()
 
                 if data.get("message"):
@@ -54,6 +69,18 @@ class SKFService:
                     source_type=SourceType.API,
                 )
 
-            except Exception as e:
-                logger.exception("SKF request failed", extra={"sku": sku})
-                return None
+            except httpx.ReadTimeout:
+                logger.warning("SKF timeout", extra={"sku": sku})
+                raise
+
+            except httpx.HTTPStatusError as e:
+                logger.error("SKF HTTP error", extra={
+                    "sku": sku,
+                    "status": e.response.status_code,
+                    "body": e.response.text,
+                })
+                raise
+
+            except Exception:
+                logger.exception("Unexpected SKF failure", extra={"sku": sku})
+                raise

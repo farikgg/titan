@@ -1,6 +1,6 @@
 """Опеределяет что происходит перед, и после, работы FastAPI приложения"""
 from fastapi import FastAPI
-from src.db.initialize import  engine
+from src.db.initialize import engine
 from contextlib import asynccontextmanager
 
 @asynccontextmanager

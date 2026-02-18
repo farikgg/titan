@@ -33,9 +33,12 @@ class OfferService:
             user_id=user_id,
             status=OfferStatus.DRAFT,
             total=Decimal("0.00"),
+            currency=None,
         )
         self.db.add(offer)
-        await self.db.flush()
+        await self.db.commit()
+        await self.db.refresh(offer)
+
         return offer
 
     # --------------------------------------------------
@@ -44,21 +47,33 @@ class OfferService:
 
     async def add_item(self, offer_id: int, sku: str, quantity: int = 1):
 
-        result = await self.db.execute(
+        offer = await self.db.get(OfferModel, offer_id)
+        if not offer:
+            raise ValueError("Offer not found")
+
+        price_obj = await self.db.scalar(
             select(PriceModel).where(PriceModel.art == sku)
         )
-        price_obj = result.scalar_one_or_none()
 
         if not price_obj:
             raise ValueError("SKU not found")
 
-        result = await self.db.execute(
+        # ---------------- ВАЛЮТА ----------------
+
+        if not offer.currency:
+            offer.currency = price_obj.currency
+
+        if offer.currency != price_obj.currency:
+            raise ValueError("Mixed currencies are not allowed")
+
+        # ---------------- ПРОВЕРКА СУЩЕСТВУЕТ ЛИ ТОВАР ----------------
+
+        existing = await self.db.scalar(
             select(OfferItemModel).where(
                 OfferItemModel.offer_id == offer_id,
                 OfferItemModel.sku == sku,
             )
         )
-        existing = result.scalar_one_or_none()
 
         if existing:
             existing.quantity += quantity
@@ -74,6 +89,8 @@ class OfferService:
             )
             self.db.add(item)
 
+        # ---------------- ПЕРЕСЧЁТ ИТОГА ----------------
+
         await self.recalc_total(offer_id)
 
         await self._log(
@@ -81,6 +98,8 @@ class OfferService:
             action="add_item",
             payload={"offer_id": offer_id, "sku": sku},
         )
+
+        await self.db.commit()
 
     # --------------------------------------------------
     # Clear

@@ -1,12 +1,12 @@
-import asyncio, logging
+import asyncio, logging, httpx
 from pathlib import Path
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
-from src.db.models.offer_model import OfferStatus
 from src.worker.celery_app import app
 from src.db.models.price_model import EmailProcessing
+from src.db.models.offer_model import OfferStatus
 from src.services.price_service import PriceService
 from src.services.skf_service import SKFService
 from src.db.initialize import async_session
@@ -18,23 +18,11 @@ from src.core.graph_auth import GraphAuth
 
 logger = logging.getLogger(__name__)
 
+loop = asyncio.new_event_loop()
+asyncio.set_event_loop(loop)
 
 def run_async(coro):
-    """
-    Безопасный запуск async-кода из Celery.
-    Не закрывает event loop, если он уже есть.
-    """
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        loop = None
-
-    if loop and loop.is_running():
-        # Celery / retry / weird env
-        return asyncio.run_coroutine_threadsafe(coro, loop).result()
-    else:
-        return asyncio.run(coro)
-
+    return loop.run_until_complete(coro)
 
 
 @app.task(
@@ -163,7 +151,12 @@ def ai_process(self, msg_dict):
 
 
 SKF_ARTICULS = ["278661", "644-46364-8", "085734"]
-@app.task(name="src.worker.tasks.sync_skf_prices")
+@app.task(
+    name="src.worker.tasks.sync_skf_prices",
+    autoretry_for=(httpx.ReadTimeout, httpx.HTTPStatusError),
+    retry_backoff=True,
+    retry_kwargs={"max_retries": 5},
+)
 def sync_skf_prices_task():
     """
     Массовое обновление цен SKF (batch).
@@ -175,7 +168,7 @@ def sync_skf_prices_task():
 
         for sku in SKF_ARTICULS:
             lock_key = f"skf:{sku}"
-            acquired = await lock_service.acquire_lock(lock_key, 6)  # нужно поменять на 600 на проде
+            acquired = await lock_service.acquire_lock(lock_key, 600)
             if not acquired:
                 continue
 
@@ -191,7 +184,12 @@ def sync_skf_prices_task():
     run_async(_inner())
 
 
-@app.task(name="src.worker.tasks.sync_skf_single")
+@app.task(
+    name="src.worker.tasks.sync_skf_single",
+    autoretry_for=(httpx.ReadTimeout, httpx.HTTPStatusError),
+    retry_backoff=True,
+    retry_kwargs={"max_retries": 5},
+)
 def sync_skf_single(sku: str):
     """
     Обновляет цены для одного товара SKF
@@ -201,7 +199,7 @@ def sync_skf_single(sku: str):
         price_service = PriceService()
 
         lock_key = f"skf:{sku}"
-        acquired = await lock_service.acquire_lock(lock_key, expire=6) # поменять на проде на 600
+        acquired = await lock_service.acquire_lock(lock_key, expire=600)
         if not acquired:
             return
 
@@ -240,7 +238,7 @@ def process_deal_update(deal_id: int):
             return
 
         # запускаем PDF генерацию
-        generate_offer_pdf_task.delay(deal_id, stage_id, settings.TELEGRAM_CHAT_ID)
+        generate_offer_pdf_task.delay(deal_id, settings.TELEGRAM_CHAT_ID)
 
     run_async(_inner())
 
@@ -248,7 +246,6 @@ def process_deal_update(deal_id: int):
 async def _generate_offer_pdf(offer_id: int, chat_id: int):
 
     from src.services.pdf_service import PdfService
-    from src.db.initialize import async_session
     from src.db.models.offer_model import OfferModel
     from src.db.models.audit_log import AuditLog
     from src.services.telegram_service import TelegramService
@@ -273,6 +270,11 @@ async def _generate_offer_pdf(offer_id: int, chat_id: int):
         await session.commit()
 
     progress = await tg.send_message(chat_id, "🧾 Генерирую PDF...")
+    if not progress or not progress.get("result"):
+        logger.error("Не удалось получить message_id %s", progress)
+        return
+
+    message_id = progress["result"]["message_id"]
 
     try:
 
@@ -285,8 +287,10 @@ async def _generate_offer_pdf(offer_id: int, chat_id: int):
                 deal={
                     "id": offer.id,
                     "title": f"КП #{offer.id}",
+                    "currency": offer.currency,
                     "items": [
                         {
+                            "art": i.sku,
                             "name": i.name,
                             "price": float(i.price),
                             "quantity": i.quantity,
@@ -297,7 +301,7 @@ async def _generate_offer_pdf(offer_id: int, chat_id: int):
                 }
             )
 
-            offer.pdf_path = pdf_path
+            offer.pdf_path = str(pdf_path)
             offer.status = OfferStatus.GENERATED
             offer.is_generating = False
 
@@ -314,7 +318,7 @@ async def _generate_offer_pdf(offer_id: int, chat_id: int):
 
         await tg.edit_message(
             chat_id,
-            progress["message_id"],
+            message_id,
             "✅ PDF готов"
         )
 
@@ -333,15 +337,22 @@ async def _generate_offer_pdf(offer_id: int, chat_id: int):
 
         await tg.edit_message(
             chat_id,
-            progress["message_id"],
+            progress["result"]["message_id"],
             "❌ Ошибка генерации"
         )
 
         raise
 
+    finally:
+        async with async_session() as session:
+            offer = await session.get(OfferModel, offer_id)
+            if offer:
+                offer.is_generating = False
+                await session.commit()
+
 @app.task(
     bind=True,
-    autoretry_for=(Exception,),
+    autoretry_for=(httpx.ReadTimeout, httpx.HTTPStatusError),
     retry_backoff=True,
     max_retries=3,
     time_limit=600,
