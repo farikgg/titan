@@ -7,6 +7,7 @@ from src.api.v1.prices.router import router as prices_router
 from src.api.v1.parse.router import router as sync_now_parser
 from src.api.v1.deals.router import router as deals_router
 from src.api.v1.webhooks.router import router as webhooks_router
+from src.api.v1.webhooks.router import _handle_bitrix_webhook
 from src.api.v1.telegram.router import router as telegram_router
 from src.api.v1.offers.router import router as offer_router
 
@@ -31,6 +32,21 @@ app.include_router(offer_router)
 @app.get("/health")
 async def check_health():
     return { "status": "ok" }
+
+
+# ── Catch-all для Bitrix24 вебхуков (шлёт на /webhook/bitrix/deals/ и /) ──
+
+@app.post("/webhook/bitrix/deals/")
+@app.post("/webhook/bitrix/deals")
+async def bitrix_webhook_legacy(request: Request):
+    """Bitrix24 настроен на этот URL — перенаправляем в общий обработчик."""
+    return await _handle_bitrix_webhook(request)
+
+
+@app.post("/")
+async def root_webhook(request: Request):
+    """Bitrix24 иногда шлёт на корневой URL."""
+    return await _handle_bitrix_webhook(request)
 
 @app.exception_handler(UserError)
 async def user_exception_handler(request: Request, exc: UserError):

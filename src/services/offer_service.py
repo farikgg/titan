@@ -161,34 +161,70 @@ class OfferService:
     # Convert
     # --------------------------------------------------
 
-    async def convert_to_bitrix(self, offer_id: int):
-
+    async def convert_to_bitrix(self, offer_id: int, assigned_by_id: int = 1):
+        """
+        Конвертирует КП в сделку в воронке Гидротех.
+        1. Создаёт сделку (стадия NEW)
+        2. Привязывает товары
+        3. Переводит в PREPARATION
+        """
         offer = await self.db.get(OfferModel, offer_id)
+
+        if not offer:
+            raise ValueError("Offer not found")
 
         if offer.status == OfferStatus.CONVERTED:
             raise ValueError("Already converted")
 
         from src.core.bitrix import get_bitrix_client
         from src.services.bitrix_service import BitrixService
+        from src.services.deal_service import DealService
 
         bx = get_bitrix_client()
         bitrix = BitrixService(bx)
+        deal_service = DealService(bitrix)
 
-        deal = await bitrix.create_deal(
+        # Получаем товары КП
+        result = await self.db.execute(
+            select(OfferItemModel).where(
+                OfferItemModel.offer_id == offer_id
+            )
+        )
+        items = result.scalars().all()
+
+        products = [
+            {
+                "PRODUCT_NAME": item.name,
+                "PRICE": float(item.price),
+                "QUANTITY": item.quantity,
+            }
+            for item in items
+        ]
+
+        # Создаём сделку в Bitrix24 (стадия NEW → сразу PREPARATION)
+        deal_id = await deal_service.create_deal(
             title=f"КП #{offer.id}",
-            amount=float(offer.total),
+            assigned_by_id=assigned_by_id,
+            currency=offer.currency or "KZT",
+            products=products,
         )
 
-        offer.bitrix_deal_id = deal["ID"]
+        if not deal_id:
+            raise ValueError("Failed to create deal in Bitrix24")
+
+        # Переводим в стадию PREPARATION
+        await deal_service.move_to_preparation(deal_id)
+
+        offer.bitrix_deal_id = str(deal_id)
         offer.status = OfferStatus.CONVERTED
 
         await self._log(
             actor_type="system",
             action="convert_to_bitrix",
-            payload={"offer_id": offer_id, "deal_id": deal["ID"]},
+            payload={"offer_id": offer_id, "deal_id": deal_id},
         )
 
-        return deal["ID"]
+        return deal_id
 
     # --------------------------------------------------
     # History

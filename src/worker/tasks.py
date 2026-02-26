@@ -219,26 +219,53 @@ def sync_skf_single(sku: str):
 def process_deal_update(deal_id: int):
     """
     Обработка обновления сделки из Bitrix webhook.
+    Реагирует на смену стадии в воронке Гидротех.
     """
+    from src.app.config import BITRIX_STAGES
+
     async def _inner():
         from src.core.bitrix import get_bitrix_client
         from src.services.bitrix_service import BitrixService
+        from src.services.telegram_service import TelegramService
 
         bx = get_bitrix_client()
         bitrix_service = BitrixService(bx)
+        tg = TelegramService()
 
         deal = await bitrix_service.get_deal(deal_id)
         if not deal:
-            logger.warning(f"Сделка {deal_id} не найдена")
+            logger.warning("Сделка %s не найдена", deal_id)
             return
 
         stage_id = deal.get("STAGE_ID")
+        category_id = deal.get("CATEGORY_ID")
 
-        if stage_id != settings.BITRIX_STAGES.DEAL_PAID:
+        # Обрабатываем только сделки из воронки Гидротех
+        if str(category_id) != str(BITRIX_STAGES.CATEGORY_ID):
             return
 
-        # запускаем PDF генерацию
-        generate_offer_pdf_task.delay(deal_id, settings.TELEGRAM_CHAT_ID)
+        logger.info(
+            "Webhook: сделка %s, стадия=%s, воронка=%s",
+            deal_id, stage_id, category_id,
+        )
+
+        # При переходе в WON — уведомляем
+        if stage_id == BITRIX_STAGES.WON:
+            await tg.send_message(
+                chat_id=settings.TELEGRAM_CHAT_ID,
+                text=(
+                    f"🎉 Сделка #{deal_id} выиграна!\n"
+                    f"Название: {deal.get('TITLE')}\n"
+                    f"Сумма: {deal.get('OPPORTUNITY')} {deal.get('CURRENCY_ID')}"
+                ),
+            )
+
+        # При переходе в LOSE — уведомляем
+        elif stage_id == BITRIX_STAGES.LOSE:
+            await tg.send_message(
+                chat_id=settings.TELEGRAM_CHAT_ID,
+                text=f"❌ Сделка #{deal_id} проиграна: {deal.get('TITLE')}",
+            )
 
     run_async(_inner())
 
@@ -249,6 +276,9 @@ async def _generate_offer_pdf(offer_id: int, chat_id: int):
     from src.db.models.offer_model import OfferModel
     from src.db.models.audit_log import AuditLog
     from src.services.telegram_service import TelegramService
+    from src.services.deal_service import DealService
+    from src.services.bitrix_service import BitrixService
+    from src.core.bitrix import get_bitrix_client
 
     tg = TelegramService()
     pdf_service = PdfService()
@@ -315,6 +345,23 @@ async def _generate_offer_pdf(offer_id: int, chat_id: int):
             )
 
             await session.commit()
+
+            # ── Смена стадии сделки в Bitrix24: → KP_CREATED ──
+            bitrix_deal_id = offer.bitrix_deal_id
+            if bitrix_deal_id:
+                try:
+                    bx = get_bitrix_client()
+                    deal_service = DealService(BitrixService(bx))
+                    await deal_service.move_to_kp_created(int(bitrix_deal_id))
+                    logger.info(
+                        "Сделка %s переведена в KP_CREATED после генерации PDF",
+                        bitrix_deal_id,
+                    )
+                except Exception:
+                    logger.exception(
+                        "Ошибка смены стадии сделки %s на KP_CREATED",
+                        bitrix_deal_id,
+                    )
 
         await tg.edit_message(
             chat_id,

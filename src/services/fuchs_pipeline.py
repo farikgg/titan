@@ -3,12 +3,19 @@ from src.services.price_service import PriceService, PriceCreate
 from src.services.fuchs_parser import FuchsAIParser
 from src.services.excel_parser import FuchsExcelParser
 from src.services.telegram_service import TelegramService
+from src.services.deal_service import DealService
+from src.services.bitrix_service import BitrixService
+from src.core.bitrix import get_bitrix_client
 from src.db.initialize import async_session
 from src.app.config import settings
 
 import logging
 
 logger = logging.getLogger(__name__)
+
+# Bitrix user ID по умолчанию для автоматически созданных сделок.
+# Позже можно привязывать к конкретному менеджеру через маршрутизацию.
+DEFAULT_ASSIGNED_BY_ID = 109
 
 
 async def process_fuchs_message(msg_dict: dict) -> str:
@@ -76,15 +83,43 @@ async def process_fuchs_message(msg_dict: dict) -> str:
 
         await session.commit()
 
-    # -------- TELEGRAM AFTER COMMIT --------
+    # -------- СОЗДАНИЕ СДЕЛКИ В BITRIX24 (воронка Гидротех) --------
+    deal_id = None
+    try:
+        bx = get_bitrix_client()
+        deal_service = DealService(BitrixService(bx))
+
+        deal_id = await deal_service.create_deal_from_email(
+            subject=msg_dict.get("subject", ""),
+            sender=msg_dict.get("from", "FUCHS"),
+            assigned_by_id=DEFAULT_ASSIGNED_BY_ID,
+            parsed_items=[
+                {
+                    "art": item.art,
+                    "name": item.name,
+                    "price": float(item.price) if item.price else 0,
+                    "currency": item.currency or "EUR",
+                    "quantity": 1,
+                }
+                for item in valid_items
+            ],
+            message_id=message_id,
+        )
+    except Exception:
+        logger.exception("Ошибка создания сделки в Bitrix24 из письма FUCHS")
+
+    # -------- TELEGRAM NOTIFICATION --------
+    deal_text = f"\n🏢 Сделка: #{deal_id}" if deal_id else "\n⚠️ Сделка не создана"
+
     await tg.send_message(
         chat_id=settings.TELEGRAM_CHAT_ID,
         text=(
-            f"Обработано письмо FUCHS\n"
+            f"📧 Обработано письмо FUCHS\n"
             f"Message ID: {message_id}\n"
             f"Позиций: {len(valid_items)}"
+            f"{deal_text}"
         ),
     )
 
-    return f"Saved: {len(valid_items)}"
+    return f"Saved: {len(valid_items)}, deal: {deal_id}"
 

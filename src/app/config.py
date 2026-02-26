@@ -1,11 +1,37 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-
 class BitrixStages(BaseSettings):
-    DEAL_NEW: str = "C2:NEW"
-    DEAL_WON: str = "C2:WON"
-    DEAL_PAID: str = "C2:WON"  # если оплата = WON, иначе свой ID
+    """
+    Стадии воронки «Гидротех» в Bitrix24.
+    CATEGORY_ID = 2  →  все стадии имеют префикс C2:
+
+    Жизненный цикл сделки:
+      NEW → PREPARATION → KP_CREATED → KP_SENT → WON / LOSE
+    """
+    CATEGORY_ID: int = 2
+
+    NEW: str = "C2:NEW"                  # Новая заявка
+    PREPARATION: str = "C2:PREPARATION"  # Подготовка КП (товары добавлены)
+    KP_CREATED: str = "C2:KP_CREATED"    # КП сформировано (PDF готов)
+    KP_SENT: str = "C2:KP_SENT"          # КП отправлено клиенту
+    WON: str = "C2:WON"                  # Сделка выиграна
+    LOSE: str = "C2:LOSE"                # Сделка проиграна
+
+    # Допустимые переходы: из стадии → в какие стадии можно перейти
+    @property
+    def allowed_transitions(self) -> dict[str, list[str]]:
+        return {
+            self.NEW: [self.PREPARATION, self.LOSE],
+            self.PREPARATION: [self.KP_CREATED, self.LOSE],
+            self.KP_CREATED: [self.KP_SENT, self.PREPARATION, self.LOSE],
+            self.KP_SENT: [self.WON, self.LOSE, self.PREPARATION],
+            self.WON: [],
+            self.LOSE: [self.NEW],
+        }
+
+
+BITRIX_STAGES = BitrixStages()
 
 
 class Settings(BaseSettings):

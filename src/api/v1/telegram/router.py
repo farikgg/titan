@@ -2,11 +2,16 @@ from fastapi import APIRouter
 from sqlalchemy import select
 
 from src.services.telegram_service import TelegramService
+from src.services.deal_service import DealService
+from src.services.bitrix_service import BitrixService
+from src.core.bitrix import get_bitrix_client
 from src.worker.tasks import generate_offer_pdf_task
 from src.repositories.user_repo import UserRepository
 from src.services.offer_service import OfferService
 from src.db.models.price_model import PriceModel
+from src.db.models.offer_model import OfferModel
 from src.core.enums import Role
+from src.app.config import BITRIX_STAGES
 
 from src.db.initialize import async_session
 from src.worker.tasks import parse_from_fuchs, sync_skf_prices_task
@@ -47,6 +52,7 @@ async def telegram_webhook(update: dict):
                     [{"text": "❌ Очистить", "callback_data": "clear"}],
                     [{"text": "📄 Создать PDF", "callback_data": "generate"}],
                     [{"text": "🏢 Создать сделку", "callback_data": "convert"}],
+                    [{"text": "📨 Отметить КП отправленным", "callback_data": "mark_kp_sent"}],
                     [{"text": "📚 История КП", "callback_data": "history"}],
                 ]
 
@@ -62,7 +68,7 @@ async def telegram_webhook(update: dict):
                 return await tg.edit_message(
                     chat_id,
                     message_id,
-                    "Главное меню",
+                    "Главное меню — Воронка Гидротех",
                     {"inline_keyboard": keyboard},
                 )
 
@@ -190,14 +196,93 @@ async def telegram_webhook(update: dict):
 
             # ---------------- CONVERT ----------------
             if data == "convert":
-                deal_id = await offer_service.convert_to_bitrix(offer.id)
-                await session.commit()
+                try:
+                    deal_id = await offer_service.convert_to_bitrix(
+                        offer.id,
+                        assigned_by_id=user.bitrix_user_id,
+                    )
+                    await session.commit()
 
-                return await tg.edit_message(
-                    chat_id,
-                    message_id,
-                    f"🏢 Сделка создана\nID: {deal_id}",
-                )
+                    return await tg.edit_message(
+                        chat_id,
+                        message_id,
+                        f"🏢 Сделка создана в воронке Гидротех\n"
+                        f"ID: {deal_id}\n"
+                        f"Стадия: Подготовка КП",
+                        {
+                            "inline_keyboard": [
+                                [{"text": "📄 Создать PDF", "callback_data": "generate"}],
+                                [{"text": "⬅ Назад", "callback_data": "menu:main"}],
+                            ]
+                        },
+                    )
+                except ValueError as e:
+                    return await tg.edit_message(
+                        chat_id,
+                        message_id,
+                        f"⚠️ {e}",
+                        tg.back_button(),
+                    )
+
+            # ---------------- KP_SENT (отметить отправку КП) ----------------
+            if data == "mark_kp_sent":
+                offer = await offer_service.get_or_create_draft(user.id)
+                bitrix_deal_id = offer.bitrix_deal_id
+
+                if not bitrix_deal_id:
+                    return await tg.edit_message(
+                        chat_id, message_id,
+                        "⚠️ Сделка не привязана к Bitrix",
+                        tg.back_button(),
+                    )
+
+                bx = get_bitrix_client()
+                deal_service = DealService(BitrixService(bx))
+                success = await deal_service.move_to_kp_sent(int(bitrix_deal_id))
+
+                if success:
+                    return await tg.edit_message(
+                        chat_id, message_id,
+                        f"📨 КП отправлено клиенту\nСделка #{bitrix_deal_id} → КП отправлено",
+                        tg.back_button(),
+                    )
+                else:
+                    return await tg.edit_message(
+                        chat_id, message_id,
+                        "⚠️ Невозможно сменить стадию. Сначала сгенерируйте PDF.",
+                        tg.back_button(),
+                    )
+
+            # ---------------- DEAL STAGES (управление стадией) ----------------
+            if data.startswith("stage:"):
+                parts = data.split(":")
+                if len(parts) == 3:
+                    target_deal_id = int(parts[1])
+                    target_stage = parts[2]
+
+                    bx = get_bitrix_client()
+                    deal_service = DealService(BitrixService(bx))
+
+                    stage_handlers = {
+                        "preparation": deal_service.move_to_preparation,
+                        "kp_created": deal_service.move_to_kp_created,
+                        "kp_sent": deal_service.move_to_kp_sent,
+                        "won": deal_service.move_to_won,
+                        "lost": deal_service.move_to_lost,
+                    }
+
+                    handler = stage_handlers.get(target_stage)
+                    if handler:
+                        success = await handler(target_deal_id)
+                        status_text = "✅ Стадия обновлена" if success else "⚠️ Переход невозможен"
+                    else:
+                        status_text = "⚠️ Неизвестная стадия"
+
+                    return await tg.edit_message(
+                        chat_id, message_id,
+                        f"{status_text}\nСделка: #{target_deal_id}",
+                        tg.back_button(),
+                    )
 
             # ---------------- HISTORY ----------------
             if data == "history":
@@ -254,6 +339,7 @@ async def telegram_webhook(update: dict):
             [{"text": "❌ Очистить", "callback_data": "clear"}],
             [{"text": "📄 Создать PDF", "callback_data": "generate"}],
             [{"text": "🏢 Создать сделку", "callback_data": "convert"}],
+            [{"text": "📨 Отметить КП отправленным", "callback_data": "mark_kp_sent"}],
             [{"text": "📚 История КП", "callback_data": "history"}],
         ]
 
@@ -267,7 +353,7 @@ async def telegram_webhook(update: dict):
 
         await tg.send_message(
             chat_id,
-            "Главное меню",
+            "Главное меню — Воронка Гидротех",
             {"inline_keyboard": keyboard},
         )
 
