@@ -38,8 +38,12 @@ class Settings(BaseSettings):
     DATABASE_URL: str
     BITRIX_WEBHOOK: str | None = None
     GROQ_API_KEY: str | None = None
-    REDIS_HOST: str
-    REDIS_PORT: int
+    # Если REDIS_URL задан (например, redis://default:pass@host:6379/0),
+    # он используется для Celery и LockService.
+    # Иначе используется пара REDIS_HOST / REDIS_PORT.
+    REDIS_URL: str | None = None
+    REDIS_HOST: str = "localhost"
+    REDIS_PORT: int = 6379
     ADMIN_SECRET_TOKEN: str
     SKF_API_KEY: str
     SKF_API_SECRET: str

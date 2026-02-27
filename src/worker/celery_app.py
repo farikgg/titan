@@ -4,12 +4,17 @@ from celery.schedules import crontab
 from src.app.config import settings
 
 
-# создает celery app
-app = Celery(
-    "tasks",
-    broker=f"redis://{settings.REDIS_HOST}:{settings.REDIS_PORT}/0",
-    backend=f"redis://{settings.REDIS_HOST}:{settings.REDIS_PORT}/1",
-)
+# создаёт celery app
+# Если задан REDIS_URL (с учётом логина/пароля) — используем его.
+# Иначе собираем URL из REDIS_HOST/REDIS_PORT.
+if settings.REDIS_URL:
+    broker_url = settings.REDIS_URL
+    backend_url = settings.REDIS_URL
+else:
+    broker_url = f"redis://{settings.REDIS_HOST}:{settings.REDIS_PORT}/0"
+    backend_url = f"redis://{settings.REDIS_HOST}:{settings.REDIS_PORT}/1"
+
+app = Celery("tasks", broker=broker_url, backend=backend_url)
 
 app.conf.update(
     task_serializer="json",
