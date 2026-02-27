@@ -5,16 +5,16 @@ from src.app.config import settings
 
 
 # создаёт celery app
-# Если задан REDIS_URL (с учётом логина/пароля) — используем его.
+# Если задан REDIS_URL (с учётом логина/пароля) — используем его как broker.
 # Иначе собираем URL из REDIS_HOST/REDIS_PORT.
 if settings.REDIS_URL:
     broker_url = settings.REDIS_URL
-    backend_url = settings.REDIS_URL
 else:
     broker_url = f"redis://{settings.REDIS_HOST}:{settings.REDIS_PORT}/0"
-    backend_url = f"redis://{settings.REDIS_HOST}:{settings.REDIS_PORT}/1"
 
-app = Celery("tasks", broker=broker_url, backend=backend_url)
+# Результаты задач нам сейчас не нужны, поэтому backend не настраиваем
+# (это позволяет избежать лишних ошибок конфигурации Redis backend).
+app = Celery("tasks", broker=broker_url)
 
 app.conf.update(
     task_serializer="json",
