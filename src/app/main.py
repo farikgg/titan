@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 
 from src.app.lifespan import lifespan
 from src.api.v1.users.router import router as users_router
@@ -19,6 +20,15 @@ app = FastAPI(
     description="My FastAPI App",
     version="0.0.1",
     lifespan=lifespan,
+)
+
+# ── CORS (для Telegram Mini App / фронта) ──
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # при необходимости можно сузить до конкретных доменов
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 app.include_router(users_router)
