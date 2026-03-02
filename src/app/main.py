@@ -25,7 +25,11 @@ app = FastAPI(
 # ── CORS (для Telegram Mini App / фронта) ──
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # при необходимости можно сузить до конкретных доменов
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://167.99.243.146:3002",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
