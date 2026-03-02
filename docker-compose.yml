@@ -15,12 +15,18 @@ services:
   # ── Celery Worker ──
   worker:
     build: .
-    command: uv run celery -A src.worker.celery_app worker --loglevel=info --concurrency=2
+    command: uv run celery -A src.worker.celery_app worker --loglevel=info --concurrency=1
     env_file: .env
     depends_on:
       - postgres
       - redis
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 150M
+        reservations:
+          memory: 100M
 
   # ── Celery Beat (планировщик) ──
   beat:
