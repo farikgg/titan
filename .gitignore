@@ -3,3 +3,4 @@
 .dockerignore
 .idea/
 __pycache__
+*.env_deploy
