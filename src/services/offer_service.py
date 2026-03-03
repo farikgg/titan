@@ -41,6 +41,13 @@ class OfferService:
 
         return offer
 
+    async def create_draft(self, user_id: int) -> OfferModel:
+        """
+        Обёртка для совместимости с роутером `/offers/draft`.
+        Фактически делает то же самое, что и `get_or_create_draft`.
+        """
+        return await self.get_or_create_draft(user_id)
+
     # --------------------------------------------------
     # Add item
     # --------------------------------------------------
@@ -283,6 +290,7 @@ class OfferService:
             "id": offer.id,
             "status": offer.status.value,
             "total": float(offer.total),
+            "bitrix_deal_id": offer.bitrix_deal_id,
             "items": [
                 {
                     "sku": i.sku,

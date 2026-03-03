@@ -26,6 +26,24 @@ async def add_user(user_schema: UserCreate, user_service: UserServiceDep):
     return UserRead.model_validate(user)
 
 
+@router.get(
+    "/me",
+    response_model=UserRead,
+    summary="Получить текущего пользователя (TMA)",
+    description="""
+Возвращает текущего пользователя Telegram Mini App.
+
+Авторизация происходит через заголовок:
+X-Telegram-Init-Data
+
+Если подпись Telegram некорректна → 401  
+Если пользователь не зарегистрирован → 403
+""",
+)
+async def get_me(current_user: UserModel = Depends(get_tg_user)):
+    return UserRead.model_validate(current_user)
+
+
 @router.get('/{id}', response_model=UserRead,status_code=status.HTTP_200_OK)
 async def get_by_id(id: int, user_service: UserServiceDep):
     user = await user_service.get_user(id)
@@ -51,21 +69,3 @@ async def search_single(
     _auth = Depends(get_tg_user) # Защита роутера
 ):
     return await price_service.get_price(db, art)
-
-
-@router.get(
-    "/me",
-    response_model=UserRead,
-    summary="Получить текущего пользователя (TMA)",
-    description="""
-Возвращает текущего пользователя Telegram Mini App.
-
-Авторизация происходит через заголовок:
-X-Telegram-Init-Data
-
-Если подпись Telegram некорректна → 401  
-Если пользователь не зарегистрирован → 403
-""",
-)
-async def get_me(current_user: UserModel = Depends(get_tg_user)):
-    return UserRead.model_validate(current_user)

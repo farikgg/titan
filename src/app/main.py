@@ -1,6 +1,8 @@
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import Response
 
 from src.app.lifespan import lifespan
 from src.api.v1.users.router import router as users_router
@@ -15,6 +17,37 @@ from src.api.v1.offers.router import router as offer_router
 
 from src.core.exceptions import *
 
+ALLOWED_ORIGINS = {
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://167.99.243.146:3002",
+}
+
+
+def _cors_headers(origin: str | None) -> dict[str, str]:
+    if origin and (origin in ALLOWED_ORIGINS or "trycloudflare.com" in origin):
+        allow_origin = origin
+    else:
+        allow_origin = "http://167.99.243.146:3002"
+    return {
+        "Access-Control-Allow-Origin": allow_origin,
+        "Access-Control-Allow-Credentials": "true",
+        "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type, X-Telegram-Init-Data, token, Authorization, ngrok-skip-browser-warning",
+        "Access-Control-Max-Age": "86400",
+    }
+
+
+class AddCORSHeadersMiddleware(BaseHTTPMiddleware):
+    """Добавляет CORS-заголовки к каждому ответу. OPTIONS обрабатывает маршрут ниже."""
+    async def dispatch(self, request, call_next):
+        response = await call_next(request)
+        origin = request.headers.get("origin")
+        for k, v in _cors_headers(origin).items():
+            response.headers[k] = v
+        return response
+
+
 app = FastAPI(
     title="My FastAPI App",
     description="My FastAPI App",
@@ -22,14 +55,12 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# ── CORS (для Telegram Mini App / фронта) ──
+# Сначала свой CORS (к каждому ответу), потом CORSMiddleware
+app.add_middleware(AddCORSHeadersMiddleware)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://167.99.243.146:3002",
-    ],
+    allow_origins=list(ALLOWED_ORIGINS),
+    allow_origin_regex=r"https://.*\.trycloudflare\.com",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -42,6 +73,28 @@ app.include_router(deals_router)
 app.include_router(webhooks_router)
 app.include_router(telegram_router)
 app.include_router(offer_router)
+
+
+@app.options("/{rest:path}")
+async def cors_preflight(rest: str, request: Request):
+    """Явный ответ на preflight (OPTIONS), чтобы CORS точно работал за ngrok."""
+    origin = request.headers.get("origin") or ""
+    allow = (
+        origin
+        if (origin in ALLOWED_ORIGINS or "trycloudflare.com" in origin)
+        else "http://167.99.243.146:3002"
+    )
+    return Response(
+        status_code=200,
+        headers={
+            "Access-Control-Allow-Origin": allow,
+            "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type, X-Telegram-Init-Data, token, Authorization, ngrok-skip-browser-warning",
+            "Access-Control-Allow-Credentials": "true",
+            "Access-Control-Max-Age": "86400",
+        },
+    )
+
 
 @app.get("/health")
 async def check_health():

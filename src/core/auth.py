@@ -57,10 +57,12 @@ async def get_tg_user(
     try:
         data = verify_telegram_data(
             x_telegram_init_data,
-            settings.BOT_TOKEN,
+            settings.TELEGRAM_BOT_TOKEN,
         )
-    except Exception:
-        raise HTTPException(status_code=401, detail="Invalid Telegram data")
+    except ValueError as e:
+        raise HTTPException(status_code=401, detail=f"Invalid Telegram data: {e}")
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=f"Invalid Telegram data: {type(e).__name__}")
 
     if "user" not in data:
         raise HTTPException(status_code=403, detail="Telegram user missing")
