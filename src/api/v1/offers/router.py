@@ -14,7 +14,8 @@ async def create_draft(
     user=Depends(get_tg_user),
 ):
     service = OfferService(db)
-    offer = await service.create_draft(user.id)
+    # Используем get_or_create_draft, чтобы работало даже в старых версиях сервиса
+    offer = await service.get_or_create_draft(user.id)
     await db.commit()
     return {"offer_id": offer.id}
 
