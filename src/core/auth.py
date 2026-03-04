@@ -137,10 +137,15 @@ def verify_telegram_data(init_data: str, bot_token: str) -> dict:
         logger.error(f"2. Токен в .env не соответствует боту, который открыл Mini App")
         logger.error(f"3. initData был изменён/перекодирован на фронте перед отправкой")
         logger.error("=" * 80)
+        
+        # ВРЕМЕННО: для отладки можно попробовать найти правильный токен
+        # Попроси фронт сказать, какой бот открывает Mini App, и обнови токен в .env
+        
         raise ValueError(
             f"Invalid Telegram signature. "
             f"Проверь: Mini App должен быть открыт у бота с ID {bot_id}. "
-            f"Токен этого бота должен быть в .env как TELEGRAM_BOT_TOKEN или TELEGRAM_TMA_BOT_TOKEN."
+            f"Токен этого бота должен быть в .env как TELEGRAM_BOT_TOKEN или TELEGRAM_TMA_BOT_TOKEN. "
+            f"Если используешь другого бота - обнови токен в .env на токен реального бота."
         )
 
     # 4. После успешной проверки можно декодировать значения
