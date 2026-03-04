@@ -249,23 +249,23 @@ def process_deal_update(deal_id: int):
             deal_id, stage_id, category_id,
         )
 
-        # При переходе в WON — уведомляем
-        if stage_id == BITRIX_STAGES.WON:
-            await tg.send_message(
-                chat_id=settings.TELEGRAM_CHAT_ID,
-                text=(
-                    f"🎉 Сделка #{deal_id} выиграна!\n"
-                    f"Название: {deal.get('TITLE')}\n"
-                    f"Сумма: {deal.get('OPPORTUNITY')} {deal.get('CURRENCY_ID')}"
-                ),
-            )
+        # При переходе в WON/LOSE — уведомляем всех админов
+        from src.services.telegram_service import get_admin_chat_ids
 
-        # При переходе в LOSE — уведомляем
-        elif stage_id == BITRIX_STAGES.LOSE:
-            await tg.send_message(
-                chat_id=settings.TELEGRAM_CHAT_ID,
-                text=f"❌ Сделка #{deal_id} проиграна: {deal.get('TITLE')}",
+        if stage_id == BITRIX_STAGES.WON:
+            text = (
+                f"🎉 Сделка #{deal_id} выиграна!\n"
+                f"Название: {deal.get('TITLE')}\n"
+                f"Сумма: {deal.get('OPPORTUNITY')} {deal.get('CURRENCY_ID')}"
             )
+        elif stage_id == BITRIX_STAGES.LOSE:
+            text = f"❌ Сделка #{deal_id} проиграна: {deal.get('TITLE')}"
+        else:
+            text = None
+
+        if text:
+            for chat_id in get_admin_chat_ids():
+                await tg.send_message(chat_id=chat_id, text=text)
 
     run_async(_inner())
 

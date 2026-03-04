@@ -2,7 +2,7 @@ from src.repositories.price_repo import PriceRepository
 from src.services.price_service import PriceService, PriceCreate
 from src.services.fuchs_parser import FuchsAIParser
 from src.services.excel_parser import FuchsExcelParser
-from src.services.telegram_service import TelegramService
+from src.services.telegram_service import TelegramService, get_admin_chat_ids
 from src.services.deal_service import DealService
 from src.services.bitrix_service import BitrixService
 from src.core.bitrix import get_bitrix_client
@@ -109,17 +109,24 @@ async def process_fuchs_message(msg_dict: dict) -> str:
         logger.exception("Ошибка создания сделки в Bitrix24 из письма FUCHS")
 
     # -------- TELEGRAM NOTIFICATION --------
-    deal_text = f"\n🏢 Сделка: #{deal_id}" if deal_id else "\n⚠️ Сделка не создана"
+    subject = msg_dict.get("subject") or "Без темы"
+    items_count = len(valid_items)
 
-    await tg.send_message(
-        chat_id=settings.TELEGRAM_CHAT_ID,
-        text=(
-            f"📧 Обработано письмо FUCHS\n"
-            f"Message ID: {message_id}\n"
-            f"Позиций: {len(valid_items)}"
-            f"{deal_text}"
-        ),
+    if deal_id:
+        deal_text = f"🏢 ID сделки в Битрикс24: #{deal_id}"
+    else:
+        deal_text = "⚠️ Сделка в Битрикс24 не создана"
+
+    text = (
+        "📧 Обработано письмо FUCHS\n"
+        f"Тема: {subject}\n"
+        f"Товаров спарсено: {items_count}\n"
+        f"{deal_text}"
     )
+
+    # Шлём уведомление всем, чей chat_id указан в TELEGRAM_CHAT_ID (через запятую)
+    for chat_id in get_admin_chat_ids():
+        await tg.send_message(chat_id=chat_id, text=text)
 
     return f"Saved: {len(valid_items)}, deal: {deal_id}"
 

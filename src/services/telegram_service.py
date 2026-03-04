@@ -5,6 +5,30 @@ from src.app.config import settings
 logger = logging.getLogger(__name__)
 
 
+def get_admin_chat_ids() -> list[int]:
+    """
+    Возвращает список chat_id админов/разрабов из TELEGRAM_CHAT_ID.
+
+    Формат в .env:
+    TELEGRAM_CHAT_ID=123456789,987654321,11223344
+    Допускаются пробелы и точки с запятой как разделители.
+    """
+    raw = (settings.TELEGRAM_CHAT_ID or "").strip()
+    if not raw:
+        return []
+
+    ids: list[int] = []
+    for part in raw.replace(";", ",").split(","):
+        part = part.strip()
+        if not part:
+            continue
+        try:
+            ids.append(int(part))
+        except ValueError:
+            logger.warning("Некорректный TELEGRAM_CHAT_ID '%s' — пропускаю", part)
+    return ids
+
+
 class TelegramService:
     def __init__(self):
         self.token = settings.TELEGRAM_BOT_TOKEN
