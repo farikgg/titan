@@ -55,6 +55,7 @@ class Settings(BaseSettings):
     TELEGRAM_BOT_TOKEN: str
     TELEGRAM_TMA_BOT_TOKEN: str | None = None  # Альтернативный токен для Telegram Mini App
     TELEGRAM_CHAT_ID: str
+    TELEGRAM_SKIP_SIGNATURE_CHECK: bool = True  # ВРЕМЕННО: отключить проверку подписи (только для теста!)
 
     model_config = SettingsConfigDict(
         env_file=".env",

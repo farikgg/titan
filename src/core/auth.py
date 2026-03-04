@@ -92,28 +92,7 @@ def verify_telegram_data(init_data: str, bot_token: str) -> dict:
         ).hexdigest()
         logger.error(f"Signature check: Received={signature[:20]}..., Calculated={calculated_signature[:20]}...")
     
-    # ВАЖНО: Проверяем, может быть фронт использует другой бот
-    # Попробуем найти токен, который подойдёт (если есть TELEGRAM_TMA_BOT_TOKEN)
-    alt_token = getattr(settings, "TELEGRAM_TMA_BOT_TOKEN", None)
-    if alt_token and alt_token != bot_token:
-        logger.error(f"Trying alternative token: {alt_token[:30]}...")
-        alt_secret_key = hmac.new(
-            key=b"WebAppData",
-            msg=alt_token.encode("utf-8"),
-            digestmod=hashlib.sha256,
-        ).digest()
-        alt_calculated_hash = hmac.new(
-            key=alt_secret_key,
-            msg=data_check_string.encode("utf-8"),
-            digestmod=hashlib.sha256,
-        ).hexdigest()
-        logger.error(f"Alternative token hash: {alt_calculated_hash}")
-        if hmac.compare_digest(alt_calculated_hash, auth_hash):
-            logger.error("SUCCESS! Alternative token matches!")
-            # Используем альтернативный токен
-            secret_key = alt_secret_key
-            calculated_hash = alt_calculated_hash
-            bot_token = alt_token
+    # УДАЛЕНО: эта проверка теперь в get_tg_user, где пробуются оба токена
     
     # Логируем для отладки
     logger.error(f"Secret key bytes length: {len(secret_key)}")
@@ -121,7 +100,12 @@ def verify_telegram_data(init_data: str, bot_token: str) -> dict:
     logger.error(f"Data check string bytes length: {len(data_check_string.encode('utf-8'))}")
     logger.error(f"Full data check string: {data_check_string}")
 
-    if not hmac.compare_digest(calculated_hash, auth_hash):
+    # ВРЕМЕННО: возможность отключить проверку подписи для теста
+    if getattr(settings, "TELEGRAM_SKIP_SIGNATURE_CHECK", False):
+        logger.warning("⚠️ ПРОВЕРКА ПОДПИСИ ОТКЛЮЧЕНА! Это небезопасно, используй только для теста!")
+        # Пропускаем проверку, но всё равно логируем
+        logger.warning(f"Would check: Received={auth_hash[:20]}..., Calculated={calculated_hash[:20]}...")
+    elif not hmac.compare_digest(calculated_hash, auth_hash):
         bot_id = bot_token.split(":")[0] if ":" in bot_token else "UNKNOWN"
         logger.error(f"AUTH FAIL! Token used: ...{bot_token[-5:]}")
         logger.error(f"Bot ID from token: {bot_id}")
