@@ -1,7 +1,4 @@
-import hmac
-import hashlib
-import json
-import time
+import logging, hmac, hashlib, json, time
 from urllib.parse import parse_qsl
 
 from fastapi import Header, HTTPException, Depends
@@ -13,78 +10,80 @@ from src.repositories.user_repo import UserRepository
 from src.db.models.user_model import UserModel
 from src.core.rbac import Role
 
-
-def _build_data_check_string_raw(init_data: str) -> tuple[str, str]:
-    """
-    Собирает data_check_string строго по документации Telegram:
-    - работаем с сырой строкой init_data (без предварительного parse_qsl)
-    - игнорируем параметр hash при сборке строки
-    - сортируем пары по ключу и склеиваем через '\n'
-
-    Возвращает (data_check_string, auth_hash).
-    """
-    pairs: list[tuple[str, str]] = []
-    auth_hash: str | None = None
-
-    for part in init_data.split("&"):
-        if not part or "=" not in part:
-            continue
-        key, _, value = part.partition("=")
-        if key == "hash":
-            auth_hash = value
-            continue
-        pairs.append((key, value))
-
-    if not auth_hash:
-        raise ValueError("Missing hash")
-
-    pairs.sort(key=lambda kv: kv[0])
-    data_check_string = "\n".join(f"{k}={v}" for k, v in pairs)
-    return data_check_string, auth_hash
+logger = logging.getLogger(__name__)
 
 
 def verify_telegram_data(init_data: str, bot_token: str) -> dict:
     """
     Валидация initData для Telegram WebApp.
 
-    ВАЖНО: подпись считается по сырой строке initData (как прислал Telegram),
-    без предварительного URL‑декодирования. Только после успешной проверки
-    мы можем безопасно разбирать параметры через parse_qsl.
+    ВАЖНО: Telegram подписывает значения в том виде, в котором они пришли
+    в query string (URL-encoded), отсортированные по ключу.
     """
-    data_check_string, auth_hash = _build_data_check_string_raw(init_data)
+    # 1. Ручной парсинг, БЕЗ декодирования значений
+    # init_data = "query_id=...&user=%7B%22id%22%3A...&hash=..."
+    try:
+        pairs: list[tuple[str, str]] = []
+        for part in init_data.split("&"):
+            if not part:
+                continue
+            k, _, v = part.partition("=")
+            pairs.append((k, v))
+        parsed_data = dict(pairs)
+    except Exception:
+        raise ValueError("Invalid query string format")
 
+    if "hash" not in parsed_data:
+        raise ValueError("Missing hash")
+
+    auth_hash = parsed_data.pop("hash")
+    # На всякий случай убираем signature, если Telegram её пришлёт
+    parsed_data.pop("signature", None)
+
+    # 2. Сортируем по ключу и собираем строку
+    # Значения v остаются URL-encoded — именно так Telegram считает подпись
+    data_check_string = "\n".join(
+        f"{k}={v}" for k, v in sorted(parsed_data.items())
+    )
+
+    # 3. Считаем хэш
     secret_key = hmac.new(
-        b"WebAppData",
-        bot_token.encode(),
-        hashlib.sha256,
+        key=b"WebAppData",
+        msg=bot_token.encode(),
+        digestmod=hashlib.sha256,
     ).digest()
 
     calculated_hash = hmac.new(
-        secret_key,
-        data_check_string.encode("utf-8"),
-        hashlib.sha256,
+        key=secret_key,
+        msg=data_check_string.encode(),
+        digestmod=hashlib.sha256,
     ).hexdigest()
 
     if not hmac.compare_digest(calculated_hash, auth_hash):
+        logger.error(f"AUTH FAIL! Token used: ...{bot_token[-5:]}")
+        logger.error(f"Received Hash: {auth_hash}")
+        logger.error(f"Calculated:    {calculated_hash}")
+        logger.error(f"Check String:  {data_check_string!r}")
         raise ValueError("Invalid Telegram signature")
 
-    # После успешной проверки можно разобрать параметры удобно
-    vals = dict(parse_qsl(init_data))
+    # 4. После успешной проверки можно декодировать значения
+    decoded_data: dict[str, str] = {}
+    for k, v in parsed_data.items():
+        decoded_data[k] = unquote(v)
 
-    # Проверка времени (24 часа)
-    auth_date = vals.get("auth_date")
+    auth_date = decoded_data.get("auth_date")
     if auth_date and time.time() - int(auth_date) > 86400:
         raise ValueError("Expired Telegram session")
 
-    return vals
+    return decoded_data
 
 
 async def get_tg_user(
     x_telegram_init_data: str = Header(..., alias="X-Telegram-Init-Data"),
     db: AsyncSession = Depends(get_db),
 ) -> UserModel:
-
     try:
+        # ИСПОЛЬЗУЕМ ТОКЕН ИЗ .env, БЕЗ ХАРДКОДА
         data = verify_telegram_data(
             x_telegram_init_data,
             settings.TELEGRAM_BOT_TOKEN,
@@ -92,24 +91,27 @@ async def get_tg_user(
     except ValueError as e:
         raise HTTPException(status_code=401, detail=f"Invalid Telegram data: {e}")
     except Exception as e:
-        raise HTTPException(status_code=401, detail=f"Invalid Telegram data: {type(e).__name__}")
+        logger.error(f"Auth error: {e}")
+        raise HTTPException(status_code=401, detail="Auth error")
 
     if "user" not in data:
         raise HTTPException(status_code=403, detail="Telegram user missing")
 
-    tg_user = json.loads(data["user"])
-    tg_id = tg_user.get("id")
+    try:
+        tg_user = json.loads(data["user"])
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=403, detail="Invalid user JSON")
 
+    tg_id = tg_user.get("id")
     if not tg_id:
         raise HTTPException(status_code=403, detail="Invalid Telegram user")
 
     repo = UserRepository(db)
     user = await repo.get_by_tg_id(tg_id)
-
     if not user:
         raise HTTPException(status_code=403, detail="User not registered")
 
-    return user
+   
 
 
 def require_admin(user: UserModel = Depends(get_tg_user)):
