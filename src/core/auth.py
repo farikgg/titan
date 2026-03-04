@@ -20,8 +20,8 @@ def verify_telegram_data(init_data: str, bot_token: str) -> dict:
     ВАЖНО: Telegram подписывает значения в том виде, в котором они пришли
     в query string (URL-encoded), отсортированные по ключу.
     """
-    # Логируем исходную строку для отладки
-    logger.debug(f"Raw init_data (first 200 chars): {init_data[:200]}")
+    # Логируем исходную строку для отладки (полностью)
+    logger.error(f"Raw init_data FULL: {init_data}")
     
     # 1. Ручной парсинг, БЕЗ декодирования значений
     # init_data = "query_id=...&user=%7B%22id%22%3A...&hash=..."
@@ -53,27 +53,48 @@ def verify_telegram_data(init_data: str, bot_token: str) -> dict:
     data_check_string = "\n".join(f"{k}={v}" for k, v in sorted_pairs)
 
     # 3. Считаем хэш
+    # По документации Telegram: secret_key = HMAC_SHA256("WebAppData", bot_token)
+    # В Python hmac.new(key, msg, ...) означает: HMAC(key, msg)
+    # Но Telegram использует: HMAC_SHA256("WebAppData", bot_token)
+    # Это означает: HMAC("WebAppData" как ключ, bot_token как сообщение)
     secret_key = hmac.new(
         key=b"WebAppData",
         msg=bot_token.encode("utf-8"),
         digestmod=hashlib.sha256,
     ).digest()
 
+    # calculated_hash = HMAC_SHA256(secret_key, data_check_string)
     calculated_hash = hmac.new(
         key=secret_key,
         msg=data_check_string.encode("utf-8"),
         digestmod=hashlib.sha256,
     ).hexdigest()
+    
+    # Дополнительная проверка: логируем байты secret_key и data_check_string
+    logger.error(f"Secret key bytes length: {len(secret_key)}")
+    logger.error(f"Data check string bytes: {data_check_string.encode('utf-8')[:100]}")
 
     if not hmac.compare_digest(calculated_hash, auth_hash):
+        bot_id = bot_token.split(":")[0] if ":" in bot_token else "UNKNOWN"
         logger.error(f"AUTH FAIL! Token used: ...{bot_token[-5:]}")
-        logger.error(f"Token full (first 20): {bot_token[:20]}...")
+        logger.error(f"Bot ID from token: {bot_id}")
+        logger.error(f"Token full (first 30): {bot_token[:30]}...")
         logger.error(f"Received Hash: {auth_hash}")
         logger.error(f"Calculated:    {calculated_hash}")
         logger.error(f"Check String:  {data_check_string!r}")
         logger.error(f"Sorted pairs: {sorted_pairs}")
         logger.error(f"Secret key (hex, first 16): {secret_key.hex()[:32]}")
-        raise ValueError("Invalid Telegram signature")
+        logger.error("=" * 80)
+        logger.error("ВОЗМОЖНЫЕ ПРИЧИНЫ:")
+        logger.error("1. Mini App открыт у другого бота (не того, чей токен в .env)")
+        logger.error(f"2. Токен в .env не соответствует боту, который открыл Mini App")
+        logger.error(f"3. initData был изменён/перекодирован на фронте перед отправкой")
+        logger.error("=" * 80)
+        raise ValueError(
+            f"Invalid Telegram signature. "
+            f"Проверь: Mini App должен быть открыт у бота с ID {bot_id}. "
+            f"Токен этого бота должен быть в .env как TELEGRAM_BOT_TOKEN или TELEGRAM_TMA_BOT_TOKEN."
+        )
 
     # 4. После успешной проверки можно декодировать значения
     decoded_data: dict[str, str] = {}
