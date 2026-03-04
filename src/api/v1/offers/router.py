@@ -75,9 +75,16 @@ async def clear_offer(
 async def convert(
     offer_id: int,
     db: AsyncSession = Depends(get_db),
+    user=Depends(get_tg_user),
 ):
     service = OfferService(db)
-    deal_id = await service.convert_to_bitrix(offer_id)
+    # Делаем логику такой же, как при авто‑создании из письма FUCHS:
+    # если не указать явно, внутри будет использован DEFAULT_ASSIGNED_BY_ID.
+    # Здесь можем назначать ответственным текущего пользователя Bitrix.
+    deal_id = await service.convert_to_bitrix(
+        offer_id,
+        assigned_by_id=user.bitrix_user_id,
+    )
     await db.commit()
     return {"bitrix_deal_id": deal_id}
 

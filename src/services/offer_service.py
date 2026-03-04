@@ -208,7 +208,7 @@ class OfferService:
     # Convert
     # --------------------------------------------------
 
-    async def convert_to_bitrix(self, offer_id: int, assigned_by_id: int = 1):
+    async def convert_to_bitrix(self, offer_id: int, assigned_by_id: int | None = None):
         """
         Конвертирует КП в сделку в воронке Гидротех.
         1. Создаёт сделку (стадия NEW)
@@ -230,6 +230,11 @@ class OfferService:
         bx = get_bitrix_client()
         bitrix = BitrixService(bx)
         deal_service = DealService(bitrix)
+
+        # Если ответственный не передан — используем того же, что и для авто‑сделок FUCHS
+        if assigned_by_id is None:
+            from src.services.fuchs_pipeline import DEFAULT_ASSIGNED_BY_ID
+            assigned_by_id = DEFAULT_ASSIGNED_BY_ID
 
         # Получаем товары КП
         result = await self.db.execute(
