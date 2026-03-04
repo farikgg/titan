@@ -190,9 +190,32 @@ class DealService:
         Row-level RBAC:
         - manager: только свои сделки (воронка Гидротех)
         - head-manager / admin: все сделки воронки
+
+        На практике часто бывает, что bitrix_user_id ещё не проставлен
+        или сделки созданы на другого ответственного. Чтобы у менеджера
+        не была пустая страница, делаем фоллбек: если по ответственному
+        ничего не нашли — показываем все сделки в воронке.
         """
+        # Менеджер: сначала пробуем фильтр по ответственному
         if user.role == Role.manager.value:
-            return await self.bitrix.get_deals(
-                bitrix_user_id=user.bitrix_user_id
-            )
+            deals: List[Dict] = []
+
+            if getattr(user, "bitrix_user_id", None):
+                deals = await self.bitrix.get_deals(
+                    bitrix_user_id=user.bitrix_user_id
+                )
+
+            # Если ничего не нашли (или bitrix_user_id нет) — фоллбек на все сделки
+            if not deals:
+                logger.warning(
+                    "DealService: для manager id=%s (bitrix_user_id=%s) сделки не найдены, "
+                    "возвращаю все сделки в воронке",
+                    getattr(user, "id", None),
+                    getattr(user, "bitrix_user_id", None),
+                )
+                return await self.bitrix.get_all_deals()
+
+            return deals
+
+        # Руководители / админы — сразу все сделки в воронке
         return await self.bitrix.get_all_deals()
