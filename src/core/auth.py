@@ -40,12 +40,22 @@ def verify_telegram_data(init_data: str, bot_token: str) -> dict:
         logger.error(f"Parse error: {e}")
         raise ValueError("Invalid query string format")
 
-    if "hash" not in parsed_data:
-        raise ValueError("Missing hash")
-
-    auth_hash = parsed_data.pop("hash")
-    # На всякий случай убираем signature, если Telegram её пришлёт
-    parsed_data.pop("signature", None)
+    # Проверяем наличие hash или signature
+    if "hash" not in parsed_data and "signature" not in parsed_data:
+        raise ValueError("Missing hash or signature")
+    
+    # Telegram использует hash для проверки подписи
+    # signature - это дополнительная подпись, но мы проверяем hash
+    auth_hash = parsed_data.pop("hash", None)
+    signature = parsed_data.pop("signature", None)
+    
+    if not auth_hash:
+        # Если hash нет, но есть signature - это странно, но попробуем использовать signature
+        if signature:
+            logger.warning("Using signature instead of hash (unusual)")
+            auth_hash = signature
+        else:
+            raise ValueError("Missing hash")
 
     # 2. Сортируем по ключу и собираем строку
     # Значения v остаются URL-encoded — именно так Telegram считает подпись
@@ -53,26 +63,35 @@ def verify_telegram_data(init_data: str, bot_token: str) -> dict:
     data_check_string = "\n".join(f"{k}={v}" for k, v in sorted_pairs)
 
     # 3. Считаем хэш
-    # По документации Telegram: secret_key = HMAC_SHA256("WebAppData", bot_token)
-    # В Python hmac.new(key, msg, ...) означает: HMAC(key, msg)
-    # Но Telegram использует: HMAC_SHA256("WebAppData", bot_token)
-    # Это означает: HMAC("WebAppData" как ключ, bot_token как сообщение)
+    # По документации Telegram: 
+    # secret_key = HMAC_SHA256("WebAppData", bot_token)
+    # calculated_hash = HMAC_SHA256(secret_key, data_check_string)
+    
+    # Вариант 1: стандартный (как в документации)
     secret_key = hmac.new(
         key=b"WebAppData",
         msg=bot_token.encode("utf-8"),
         digestmod=hashlib.sha256,
     ).digest()
 
-    # calculated_hash = HMAC_SHA256(secret_key, data_check_string)
     calculated_hash = hmac.new(
         key=secret_key,
         msg=data_check_string.encode("utf-8"),
         digestmod=hashlib.sha256,
     ).hexdigest()
     
-    # Дополнительная проверка: логируем байты secret_key и data_check_string
+    # Попробуем альтернативный вариант (на случай, если порядок параметров в HMAC другой)
+    # secret_key_alt = hashlib.sha256(("WebAppData" + bot_token).encode()).digest()
+    # calculated_hash_alt = hmac.new(
+    #     key=secret_key_alt,
+    #     msg=data_check_string.encode("utf-8"),
+    #     digestmod=hashlib.sha256,
+    # ).hexdigest()
+    
+    # Логируем для отладки
     logger.error(f"Secret key bytes length: {len(secret_key)}")
-    logger.error(f"Data check string bytes: {data_check_string.encode('utf-8')[:100]}")
+    logger.error(f"Data check string (first 150 chars): {data_check_string[:150]}")
+    logger.error(f"Data check string bytes length: {len(data_check_string.encode('utf-8'))}")
 
     if not hmac.compare_digest(calculated_hash, auth_hash):
         bot_id = bot_token.split(":")[0] if ":" in bot_token else "UNKNOWN"
