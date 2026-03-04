@@ -67,13 +67,15 @@ def verify_telegram_data(init_data: str, bot_token: str) -> dict:
     # secret_key = HMAC_SHA256("WebAppData", bot_token)
     # calculated_hash = HMAC_SHA256(secret_key, data_check_string)
     
-    # Вариант 1: стандартный (как в документации)
+    # Вариант 1: стандартный (как в документации Telegram)
+    # secret_key = HMAC_SHA256("WebAppData", bot_token)
     secret_key = hmac.new(
         key=b"WebAppData",
         msg=bot_token.encode("utf-8"),
         digestmod=hashlib.sha256,
     ).digest()
 
+    # calculated_hash = HMAC_SHA256(secret_key, data_check_string)
     calculated_hash = hmac.new(
         key=secret_key,
         msg=data_check_string.encode("utf-8"),
@@ -89,6 +91,29 @@ def verify_telegram_data(init_data: str, bot_token: str) -> dict:
             digestmod=hashlib.sha256,
         ).hexdigest()
         logger.error(f"Signature check: Received={signature[:20]}..., Calculated={calculated_signature[:20]}...")
+    
+    # ВАЖНО: Проверяем, может быть фронт использует другой бот
+    # Попробуем найти токен, который подойдёт (если есть TELEGRAM_TMA_BOT_TOKEN)
+    alt_token = getattr(settings, "TELEGRAM_TMA_BOT_TOKEN", None)
+    if alt_token and alt_token != bot_token:
+        logger.error(f"Trying alternative token: {alt_token[:30]}...")
+        alt_secret_key = hmac.new(
+            key=b"WebAppData",
+            msg=alt_token.encode("utf-8"),
+            digestmod=hashlib.sha256,
+        ).digest()
+        alt_calculated_hash = hmac.new(
+            key=alt_secret_key,
+            msg=data_check_string.encode("utf-8"),
+            digestmod=hashlib.sha256,
+        ).hexdigest()
+        logger.error(f"Alternative token hash: {alt_calculated_hash}")
+        if hmac.compare_digest(alt_calculated_hash, auth_hash):
+            logger.error("SUCCESS! Alternative token matches!")
+            # Используем альтернативный токен
+            secret_key = alt_secret_key
+            calculated_hash = alt_calculated_hash
+            bot_token = alt_token
     
     # Логируем для отладки
     logger.error(f"Secret key bytes length: {len(secret_key)}")
