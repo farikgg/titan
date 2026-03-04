@@ -5,6 +5,7 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import Table, TableStyle
 from reportlab.lib import colors
+from reportlab.lib.utils import ImageReader
 from pathlib import Path
 from datetime import datetime
 
@@ -12,6 +13,7 @@ from datetime import datetime
 BASE_DIR = Path(__file__).resolve().parents[2]
 MEDIA_DIR = BASE_DIR / "media"
 FONTS_DIR = BASE_DIR / "fonts"
+LOGO_FILENAME = "titan_logo.png"  # файл логотипа, который нужно положить в папку media
 
 
 class PdfService:
@@ -30,32 +32,81 @@ class PdfService:
         width, height = A4
 
         # ----------------------------------------
-        # Шапка компании (как в примере КП)
+        # Логотип по центру шапки
+        # ----------------------------------------
+        left_x = 20 * mm
+        top_margin = 20 * mm
+        current_top_y = height - top_margin
+
+        logo_path = MEDIA_DIR / LOGO_FILENAME
+        if logo_path.exists():
+            # Высота логотипа на странице (подогнано под пример)
+            logo_height = 22 * mm
+            logo = ImageReader(str(logo_path))
+            img_width, img_height = logo.getSize()
+            aspect = img_width / float(img_height or 1)
+            logo_width = logo_height * aspect
+
+            logo_x = (width - logo_width) / 2  # по центру страницы
+            logo_y = current_top_y - logo_height
+
+            c.drawImage(
+                logo,
+                logo_x,
+                logo_y,
+                width=logo_width,
+                height=logo_height,
+                preserveAspectRatio=True,
+                mask="auto",
+            )
+
+            # Опускаем текстовую шапку чуть ниже логотипа
+            current_top_y = logo_y - 4 * mm
+
+        # ----------------------------------------
+        # Шапка компании (контактные данные), как в примере КП
         # ----------------------------------------
         c.setFont("Arial", 9)
-        left_x = 20 * mm
-        top_y = height - 20 * mm
+        top_y = current_top_y
 
-        header_lines = [
+        # Левый блок (казахский адрес)
+        left_header_lines = [
             "Қазақстан Республикасы",
             "Нур-Султан қаласы, Есіл а.",
             "Діимұхамед Қонаев к-сі 33, 1003 кеңсе",
             "Тел.: 8 (7172) 50-19-34, 8 (7172) 50-19-31",
             "e-mail: titan_astana@mail.ru",
             "www.tpgt.kz",
-            "",
-            "ТИТАН",
-            "ТОРГОВО-ПРОМЫШЛЕННАЯ ГРУППА",
-            "Республика Казахстан, г.Нур-Султан, район Есиль, ул. Діимұхамед Қонаев, здание 33, офис 1003",
+        ]
+
+        # Правый блок (русский адрес), выравниваем по правому краю
+        right_header_lines = [
+            "Республика Казахстан, г.Нур-Султан, район Есиль,",
+            "ул. Діимұхамед Қонаев, здание 33, офис 1003",
             "Тел.: 8 (7172) 50-19-34, 8 (7172) 50-19-31",
-            "e-mail: titan_astana@mail.ru",
+            "e-mail: titan_astана@mail.ru",
             "www.tpgt.kz",
         ]
 
-        y = top_y
-        for line in header_lines:
-            c.drawString(left_x, y, line)
-            y -= 4.5 * mm
+        # Левый столбец
+        y_left = top_y
+        for line in left_header_lines:
+            c.drawString(left_x, y_left, line)
+            y_left -= 4.0 * mm
+
+        # Правый столбец
+        right_x = width - left_x
+        y_right = top_y
+        for line in right_header_lines:
+            c.drawRightString(right_x, y_right, line)
+            y_right -= 4.0 * mm
+
+        # Горизонтальная линия под шапкой
+        y_after_header = min(y_left, y_right) - 3 * mm
+        c.setLineWidth(0.7)
+        c.line(15 * mm, y_after_header, width - 15 * mm, y_after_header)
+
+        y = y_after_header
 
         # ----------------------------------------
         # Номер и дата КП
@@ -64,7 +115,7 @@ class PdfService:
         kp_number = f"КП №{deal['id']}"
         date_str = datetime.now().strftime("от %d %B %Y г.")
 
-        y -= 4 * mm
+        y -= 6 * mm
         c.drawString(left_x, y, kp_number + " " + date_str)
 
         # ----------------------------------------
