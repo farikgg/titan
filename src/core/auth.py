@@ -1,5 +1,5 @@
-import logging, hmac, hashlib, json, time, unquote
-from urllib.parse import parse_qsl
+import logging, hmac, hashlib, json, time
+from urllib.parse import unquote
 
 from fastapi import Header, HTTPException, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
