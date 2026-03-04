@@ -164,24 +164,33 @@ async def get_tg_user(
     x_telegram_init_data: str = Header(..., alias="X-Telegram-Init-Data"),
     db: AsyncSession = Depends(get_db),
 ) -> UserModel:
-    # ВРЕМЕННО: для отладки можно использовать хардкод токена
-    # Если в .env есть TELEGRAM_TMA_BOT_TOKEN, используем его, иначе из TELEGRAM_BOT_TOKEN
-    token_to_use = getattr(settings, "TELEGRAM_TMA_BOT_TOKEN", None) or settings.TELEGRAM_BOT_TOKEN
+    # Пробуем оба токена: сначала TMA токен (если есть), потом основной
+    tokens_to_try = []
+    if settings.TELEGRAM_TMA_BOT_TOKEN:
+        tokens_to_try.append(settings.TELEGRAM_TMA_BOT_TOKEN)
+    tokens_to_try.append(settings.TELEGRAM_BOT_TOKEN)
     
-    # Логируем токен для отладки (первые 20 символов)
-    token_preview = token_to_use[:20] if token_to_use else "MISSING"
-    logger.info(f"Using token: {token_preview}... (full: {token_to_use[:30]}...)")
+    last_error = None
+    for token in tokens_to_try:
+        try:
+            logger.info(f"Trying token: {token[:30]}... (Bot ID: {token.split(':')[0] if ':' in token else 'UNKNOWN'})")
+            data = verify_telegram_data(
+                x_telegram_init_data,
+                token,
+            )
+            # Если успешно - выходим из цикла
+            break
+        except ValueError as e:
+            last_error = e
+            logger.warning(f"Token {token[:30]}... failed: {e}")
+            continue
+    else:
+        # Если все токены не подошли
+        if last_error:
+            raise HTTPException(status_code=401, detail=f"Invalid Telegram data: {last_error}")
+        raise HTTPException(status_code=401, detail="Invalid Telegram data: All tokens failed")
     
-    try:
-        data = verify_telegram_data(
-            x_telegram_init_data,
-            token_to_use,
-        )
-    except ValueError as e:
-        raise HTTPException(status_code=401, detail=f"Invalid Telegram data: {e}")
-    except Exception as e:
-        logger.error(f"Auth error: {e}")
-        raise HTTPException(status_code=401, detail="Auth error")
+    # Если дошли сюда - проверка подписи прошла успешно, data уже получен
 
     if "user" not in data:
         raise HTTPException(status_code=403, detail="Telegram user missing")

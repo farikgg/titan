@@ -53,6 +53,7 @@ class Settings(BaseSettings):
     AZURE_CLIENT_ID: str
     AZURE_CLIENT_SECRET: str
     TELEGRAM_BOT_TOKEN: str
+    TELEGRAM_TMA_BOT_TOKEN: str | None = None  # Альтернативный токен для Telegram Mini App
     TELEGRAM_CHAT_ID: str
 
     model_config = SettingsConfigDict(
