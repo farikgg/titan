@@ -109,6 +109,46 @@ class OfferService:
         await self.db.commit()
 
     # --------------------------------------------------
+    # Remove item
+    # --------------------------------------------------
+
+    async def remove_item(self, offer_id: int, sku: str):
+        """Удаляет товар из коммерческого предложения"""
+        offer = await self.db.get(OfferModel, offer_id)
+        if not offer:
+            raise ValueError("Offer not found")
+
+        # Проверяем, существует ли товар
+        item = await self.db.scalar(
+            select(OfferItemModel).where(
+                OfferItemModel.offer_id == offer_id,
+                OfferItemModel.sku == sku,
+            )
+        )
+
+        if not item:
+            raise ValueError("Item not found in offer")
+
+        # Удаляем товар через delete statement
+        await self.db.execute(
+            delete(OfferItemModel).where(
+                OfferItemModel.offer_id == offer_id,
+                OfferItemModel.sku == sku,
+            )
+        )
+
+        # Пересчитываем итог
+        await self.recalc_total(offer_id)
+
+        await self._log(
+            actor_type="user",
+            action="remove_item",
+            payload={"offer_id": offer_id, "sku": sku},
+        )
+
+        await self.db.commit()
+
+    # --------------------------------------------------
     # Clear
     # --------------------------------------------------
 

@@ -38,11 +38,17 @@ async def remove_item(
     offer_id: int,
     sku: str,
     db: AsyncSession = Depends(get_db),
+    user=Depends(get_tg_user),
 ):
     service = OfferService(db)
-    await service.remove_item(offer_id, sku)
-    await db.commit()
-    return {"status": "removed"}
+    try:
+        await service.remove_item(offer_id, sku)
+        return {"status": "removed"}
+    except ValueError as e:
+        error_msg = str(e)
+        if "not found" in error_msg.lower():
+            raise HTTPException(status_code=404, detail=error_msg)
+        raise HTTPException(status_code=400, detail=error_msg)
 
 
 @router.get("/{offer_id}")
@@ -82,33 +88,7 @@ async def generate_pdf(
     db: AsyncSession = Depends(get_db),
     user=Depends(get_tg_user),
 ):
-    """
-    Запускает генерацию PDF для коммерческого предложения.
-    Генерация выполняется асинхронно в Celery.
-    
-    Возвращает task_id для отслеживания статуса.
-    """
-    service = OfferService(db)
-    
-    try:
-        offer = await service.get_offer_with_items(offer_id)
-    except AttributeError:
-        # get_offer_with_items может упасть, если offer не найден
-        raise HTTPException(status_code=404, detail="Offer not found")
-    
-    if not offer or not offer.get("id"):
-        raise HTTPException(status_code=404, detail="Offer not found")
-    
-    if not offer.get("items"):
-        raise HTTPException(status_code=400, detail="Offer is empty. Add items before generating PDF.")
-    
-    # Запускаем задачу генерации PDF
-    # Примечание: chat_id не используется в REST API, но нужен для Telegram уведомлений
-    # Используем 0 как заглушку, так как в REST API нет chat_id
+    """Запускает генерацию PDF (та же логика, что в боте)"""
+    # Используем chat_id=0 для REST API (уведомления не отправятся в Telegram)
     task = generate_offer_pdf_task.delay(offer_id, 0)
-    
-    return {
-        "task_id": task.id,
-        "status": "queued",
-        "message": "PDF generation started"
-    }
+    return {"task_id": task.id, "status": "queued"}
