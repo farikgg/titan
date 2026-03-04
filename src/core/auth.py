@@ -111,7 +111,7 @@ async def get_tg_user(
     if not user:
         raise HTTPException(status_code=403, detail="User not registered")
 
-   
+    return user
 
 
 def require_admin(user: UserModel = Depends(get_tg_user)):
