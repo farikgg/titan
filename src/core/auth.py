@@ -20,6 +20,9 @@ def verify_telegram_data(init_data: str, bot_token: str) -> dict:
     ВАЖНО: Telegram подписывает значения в том виде, в котором они пришли
     в query string (URL-encoded), отсортированные по ключу.
     """
+    # Логируем исходную строку для отладки
+    logger.debug(f"Raw init_data (first 200 chars): {init_data[:200]}")
+    
     # 1. Ручной парсинг, БЕЗ декодирования значений
     # init_data = "query_id=...&user=%7B%22id%22%3A...&hash=..."
     try:
@@ -28,9 +31,13 @@ def verify_telegram_data(init_data: str, bot_token: str) -> dict:
             if not part:
                 continue
             k, _, v = part.partition("=")
+            # Если ключ пустой, пропускаем
+            if not k:
+                continue
             pairs.append((k, v))
         parsed_data = dict(pairs)
-    except Exception:
+    except Exception as e:
+        logger.error(f"Parse error: {e}")
         raise ValueError("Invalid query string format")
 
     if "hash" not in parsed_data:
@@ -42,28 +49,30 @@ def verify_telegram_data(init_data: str, bot_token: str) -> dict:
 
     # 2. Сортируем по ключу и собираем строку
     # Значения v остаются URL-encoded — именно так Telegram считает подпись
-    data_check_string = "\n".join(
-        f"{k}={v}" for k, v in sorted(parsed_data.items())
-    )
+    sorted_pairs = sorted(parsed_data.items())
+    data_check_string = "\n".join(f"{k}={v}" for k, v in sorted_pairs)
 
     # 3. Считаем хэш
     secret_key = hmac.new(
         key=b"WebAppData",
-        msg=bot_token.encode(),
+        msg=bot_token.encode("utf-8"),
         digestmod=hashlib.sha256,
     ).digest()
 
     calculated_hash = hmac.new(
         key=secret_key,
-        msg=data_check_string.encode(),
+        msg=data_check_string.encode("utf-8"),
         digestmod=hashlib.sha256,
     ).hexdigest()
 
     if not hmac.compare_digest(calculated_hash, auth_hash):
         logger.error(f"AUTH FAIL! Token used: ...{bot_token[-5:]}")
+        logger.error(f"Token full (first 20): {bot_token[:20]}...")
         logger.error(f"Received Hash: {auth_hash}")
         logger.error(f"Calculated:    {calculated_hash}")
         logger.error(f"Check String:  {data_check_string!r}")
+        logger.error(f"Sorted pairs: {sorted_pairs}")
+        logger.error(f"Secret key (hex, first 16): {secret_key.hex()[:32]}")
         raise ValueError("Invalid Telegram signature")
 
     # 4. После успешной проверки можно декодировать значения
@@ -82,11 +91,18 @@ async def get_tg_user(
     x_telegram_init_data: str = Header(..., alias="X-Telegram-Init-Data"),
     db: AsyncSession = Depends(get_db),
 ) -> UserModel:
+    # ВРЕМЕННО: для отладки можно использовать хардкод токена
+    # Если в .env есть TELEGRAM_TMA_BOT_TOKEN, используем его, иначе из TELEGRAM_BOT_TOKEN
+    token_to_use = getattr(settings, "TELEGRAM_TMA_BOT_TOKEN", None) or settings.TELEGRAM_BOT_TOKEN
+    
+    # Логируем токен для отладки (первые 20 символов)
+    token_preview = token_to_use[:20] if token_to_use else "MISSING"
+    logger.info(f"Using token: {token_preview}... (full: {token_to_use[:30]}...)")
+    
     try:
-        # ИСПОЛЬЗУЕМ ТОКЕН ИЗ .env, БЕЗ ХАРДКОДА
         data = verify_telegram_data(
             x_telegram_init_data,
-            settings.TELEGRAM_BOT_TOKEN,
+            token_to_use,
         )
     except ValueError as e:
         raise HTTPException(status_code=401, detail=f"Invalid Telegram data: {e}")
