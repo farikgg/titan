@@ -80,18 +80,21 @@ def verify_telegram_data(init_data: str, bot_token: str) -> dict:
         digestmod=hashlib.sha256,
     ).hexdigest()
     
-    # Попробуем альтернативный вариант (на случай, если порядок параметров в HMAC другой)
-    # secret_key_alt = hashlib.sha256(("WebAppData" + bot_token).encode()).digest()
-    # calculated_hash_alt = hmac.new(
-    #     key=secret_key_alt,
-    #     msg=data_check_string.encode("utf-8"),
-    #     digestmod=hashlib.sha256,
-    # ).hexdigest()
+    # Попробуем также проверить signature, если он есть
+    calculated_signature = None
+    if signature:
+        calculated_signature = hmac.new(
+            key=secret_key,
+            msg=data_check_string.encode("utf-8"),
+            digestmod=hashlib.sha256,
+        ).hexdigest()
+        logger.error(f"Signature check: Received={signature[:20]}..., Calculated={calculated_signature[:20]}...")
     
     # Логируем для отладки
     logger.error(f"Secret key bytes length: {len(secret_key)}")
     logger.error(f"Data check string (first 150 chars): {data_check_string[:150]}")
     logger.error(f"Data check string bytes length: {len(data_check_string.encode('utf-8'))}")
+    logger.error(f"Full data check string: {data_check_string}")
 
     if not hmac.compare_digest(calculated_hash, auth_hash):
         bot_id = bot_token.split(":")[0] if ":" in bot_token else "UNKNOWN"
