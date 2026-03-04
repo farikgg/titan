@@ -88,7 +88,12 @@ async def generate_pdf(
     db: AsyncSession = Depends(get_db),
     user=Depends(get_tg_user),
 ):
-    """Запускает генерацию PDF (та же логика, что в боте)"""
-    # Используем chat_id=0 для REST API (уведомления не отправятся в Telegram)
-    task = generate_offer_pdf_task.delay(offer_id, 0)
+    """
+    Запускает генерацию PDF (та же логика, что в боте).
+
+    ВАЖНО: PDF и статус отправляются пользователю через Telegram-бота
+    в личные сообщения (chat_id = user.tg_id).
+    """
+    chat_id = user.tg_id  # в приватном чате chat_id == tg_id
+    task = generate_offer_pdf_task.delay(offer_id, chat_id)
     return {"task_id": task.id, "status": "queued"}

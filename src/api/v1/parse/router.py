@@ -82,17 +82,40 @@ async def get_status(
         Path(description="ID Celery таска")],
         _: bool = Depends(verify_user_or_telegram),
 ):
-    # Создаем объект результата
-    res = AsyncResult(task_id, app=app)
+    """
+    Возвращает статус Celery-задачи.
 
-    response = {
-        "task_id": task_id,
-        "status": res.state,
-        "result": None
-    }
+    ВАЖНО: в текущей конфигурации Celery backend отключен (DisabledBackend),
+    поэтому мы не можем получить реальный статус задачи из хранилища результатов.
+    Эндпоинт работает в "best-effort" режиме:
+      - если backend когда-нибудь будет включён, вернёт реальный статус;
+      - если backend отключён, вернёт статус "unknown".
+    """
+    try:
+        # Пытаемся получить статус из Celery (если когда-нибудь включим backend)
+        res = AsyncResult(task_id, app=app)
 
-    if res.ready():
-        # если задача завершена, возвращаем результат (то, что вернул return в task)
-        response["result"] = res.result if res.successful() else str(res.result)
+        response = {
+            "task_id": task_id,
+            "status": res.state,
+            "result": None,
+        }
 
-    return response
+        if res.ready():
+            # если задача завершена, возвращаем результат (то, что вернул return в task)
+            response["result"] = res.result if res.successful() else str(res.result)
+
+        return response
+
+    except AttributeError as e:
+        # Сюда попадаем при DisabledBackend (как в нынешней конфигурации)
+        logger.warning(
+            "Celery backend is disabled, cannot fetch task status for %s: %s",
+            task_id,
+            e,
+        )
+        return {
+            "task_id": task_id,
+            "status": "unknown",
+            "result": None,
+        }
