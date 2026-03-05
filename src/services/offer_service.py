@@ -336,6 +336,7 @@ class OfferService:
             "status": offer.status.value,
             "total": float(offer.total),
             "bitrix_deal_id": offer.bitrix_deal_id,
+            "currency": offer.currency,
             "items": [
                 {
                     "sku": i.sku,

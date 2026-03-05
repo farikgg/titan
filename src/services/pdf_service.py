@@ -143,20 +143,29 @@ class PdfService:
         # ----------------------------------------
         y -= 12 * mm
 
+        # Определяем человекочитаемое название валюты для заголовков
+        currency_code = (deal.get("currency") or "").upper()
+        currency_names = {
+            "EUR": "евро",
+            "USD": "доллар США",
+            "RUB": "руб.",
+            "KZT": "тенге",
+        }
+        currency_label = currency_names.get(currency_code, currency_code or "валюта")
+
         table_data = [
             [
                 "№",
                 "Товары\n(работы/услуги)",
                 "Кол-во",
                 "Ед. изм.",
-                "Цена, евро\n(без НДС)",
-                "Сумма, евро\n(без НДС)",
+                f"Цена, {currency_label}\n(без НДС)",
+                f"Сумма, {currency_label}\n(без НДС)",
                 "Срок\nпоставки",
             ]
         ]
 
         total_sum = 0.0
-        currency = deal.get("currency") or "евро"
 
         for idx, item in enumerate(items, start=1):
             qty = item.get("quantity", 0)
@@ -194,14 +203,15 @@ class PdfService:
 
         # Ширина страницы A4 ≈ 210 мм, при левом отступе 20 мм оставляем
         # рабочую область ~170 мм под таблицу, чтобы она не выходила за рамки.
+        # Немного перераспределяем ширину в пользу последней колонки.
         col_widths = [
-            10 * mm,  # №
-            70 * mm,  # Товары
-            15 * mm,  # Кол-во
-            15 * mm,  # Ед. изм.
-            25 * mm,  # Цена
-            25 * mm,  # Сумма
-            10 * mm,  # Срок поставки
+            8 * mm,   # №
+            68 * mm,  # Товары
+            14 * mm,  # Кол-во
+            14 * mm,  # Ед. изм.
+            24 * mm,  # Цена
+            28 * mm,  # Сумма
+            14 * mm,  # Срок поставки
         ]
 
         table = Table(table_data, colWidths=col_widths, repeatRows=1)
