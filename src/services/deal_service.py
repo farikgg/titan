@@ -31,6 +31,20 @@ class DealService:
         self.bitrix = bitrix_service
         self.price_service = price_service or PriceService()
 
+        # Константы для пользовательских полей Bitrix в воронке «Гидротех.Сделки»
+        # Выбор компании: TPG TITAN
+        self._company_enum_tpg_titan = "62"  # UF_CRM_5B20F3A90BFCC
+
+        # Справочник «Выберите решение»
+        #   159 — Системы смазки
+        #   161 — Смазочный материал
+        #   163 — Системы пожаротушения
+        self._solution_enum_map: Dict[str, str] = {
+            "systems_lubrication": "159",
+            "lubricant": "161",
+            "fire_systems": "163",
+        }
+
     # ──────────────────────────────────────────────
     #  CREATE  →  стадия NEW
     # ──────────────────────────────────────────────
@@ -81,6 +95,64 @@ class DealService:
                 await self.bitrix.update_deal(deal_id, {"OPPORTUNITY": total})
 
         logger.info("DealService: сделка создана id=%s, title=%s", deal_id, title)
+        return deal_id
+
+    async def create_deal_from_miniapp(
+        self,
+        *,
+        title: str,
+        company_id: int,
+        stage_id: str,
+        solution_code: str,
+        amount: float,
+        assigned_by_id: int,
+    ) -> Optional[int]:
+        """
+        Создание сделки из Telegram Mini App в воронке «Гидротех.Сделки».
+
+        Поля:
+          - TITLE — название сделки
+          - CATEGORY_ID = 9 — воронка «Гидротех.Сделки»
+          - STAGE_ID — одна из стадий C9:*
+          - COMPANY_ID — клиент (компания)
+          - OPPORTUNITY — сумма сделки (из КП)
+          - CURRENCY_ID — "KZT"
+          - ASSIGNED_BY_ID — ответственный (из user.bitrix_user_id)
+          - UF_CRM_5B20F3A90BFCC — выбор компании (TPG TITAN)
+          - UF_CRM_1744862002484 — «Выберите решение»
+        """
+        solution_enum_id = self._solution_enum_map.get(solution_code)
+        if not solution_enum_id:
+            raise ValueError(
+                f"Unknown solution code '{solution_code}'. "
+                f"Ожидаю одно из: {list(self._solution_enum_map.keys())}"
+            )
+
+        fields: Dict[str, Any] = {
+            "TITLE": title,
+            "CATEGORY_ID": BITRIX_STAGES.CATEGORY_ID,
+            "STAGE_ID": stage_id,
+            "COMPANY_ID": company_id,
+            "ASSIGNED_BY_ID": assigned_by_id,
+            "CURRENCY_ID": "KZT",
+            "OPPORTUNITY": float(amount),
+            # Выбор компании: TPG TITAN
+            "UF_CRM_5B20F3A90BFCC": self._company_enum_tpg_titan,
+            # Выберите решение
+            "UF_CRM_1744862002484": solution_enum_id,
+        }
+
+        deal_id = await self.bitrix.create_deal(fields)
+        if not deal_id:
+            return None
+
+        logger.info(
+            "DealService: мини‑апка создала сделку id=%s title=%s stage=%s company_id=%s",
+            deal_id,
+            title,
+            stage_id,
+            company_id,
+        )
         return deal_id
 
     # ──────────────────────────────────────────────

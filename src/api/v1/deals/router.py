@@ -20,6 +20,83 @@ def _get_deal_service() -> DealService:
     return DealService(BitrixService(bx), PriceService())
 
 
+# ──────────────────────────────────────────────
+#  Создание сделки из Telegram Mini App
+# ──────────────────────────────────────────────
+
+
+class CreateDealRequest(BaseModel):
+    title: str
+    company_id: int
+    stage: str = "NEW"  # NEW / FINAL_INVOICE / EXECUTING / WON / LOSE / APOLOGY / LOSE_REASON_COMPETITOR
+    solution: str  # systems_lubrication / lubricant / fire_systems
+    amount: float
+
+
+@router.post(
+    "/",
+    dependencies=[Depends(require_permission("deals.write"))],
+)
+async def create_deal(
+    body: CreateDealRequest,
+    user=Depends(get_tg_user),
+):
+    """
+    Создать сделку в воронке «Гидротех.Сделки» из Telegram Mini App.
+
+    Требуемые поля:
+      - title: название сделки
+      - company_id: ID компании в Bitrix24
+      - stage: ключ стадии (NEW / FINAL_INVOICE / EXECUTING / WON / LOSE / APOLOGY / LOSE_REASON_COMPETITOR)
+      - solution: ключ решения (systems_lubrication / lubricant / fire_systems)
+      - amount: сумма сделки (из КП)
+    """
+    stage_key = body.stage.upper()
+    stage_map = {
+        "NEW": BITRIX_STAGES.NEW,
+        "FINAL_INVOICE": BITRIX_STAGES.FINAL_INVOICE,
+        "EXECUTING": BITRIX_STAGES.EXECUTING,
+        "WON": BITRIX_STAGES.WON,
+        "LOSE": BITRIX_STAGES.LOSE,
+        "APOLOGY": BITRIX_STAGES.APOLOGY,
+        "LOSE_REASON_COMPETITOR": BITRIX_STAGES.LOSE_REASON_COMPETITOR,
+    }
+
+    stage_id = stage_map.get(stage_key)
+    if not stage_id:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Неизвестная стадия: {body.stage}. Допустимые: {list(stage_map.keys())}",
+        )
+
+    if not getattr(user, "bitrix_user_id", None):
+        raise HTTPException(
+            status_code=400,
+            detail="У пользователя не задан bitrix_user_id. Обнови профиль пользователя в Битрикс/БД.",
+        )
+
+    service = _get_deal_service()
+    try:
+        deal_id = await service.create_deal_from_miniapp(
+            title=body.title,
+            company_id=body.company_id,
+            stage_id=stage_id,
+            solution_code=body.solution,
+            amount=body.amount,
+            assigned_by_id=user.bitrix_user_id,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    if not deal_id:
+        raise HTTPException(
+            status_code=502,
+            detail="Не удалось создать сделку в Bitrix24",
+        )
+
+    return {"deal_id": deal_id}
+
+
 @router.get(
     "/",
     dependencies=[Depends(require_permission("deals.read"))],
