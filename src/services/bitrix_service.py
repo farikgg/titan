@@ -15,13 +15,14 @@ class BitrixService:
 
     async def get_deals(self, bitrix_user_id: int) -> List[Dict]:
         try:
+            # Показываем все активные сделки пользователя,
+            # не ограничиваясь только воронкой Гидротех.
             result = await to_thread.run_sync(
                 self.bx.call,
                 "crm.deal.list",
                 {
                     "filter": {
                         "ASSIGNED_BY_ID": bitrix_user_id,
-                        "CATEGORY_ID": BITRIX_STAGES.CATEGORY_ID,
                         "CLOSED": "N",
                     },
                     "select": [
@@ -73,12 +74,13 @@ class BitrixService:
 
     async def get_all_deals(self) -> List[Dict]:
         try:
+            # Возвращаем все незакрытые сделки без ограничения по воронке,
+            # чтобы в мини‑приложении были видны любые созданные сделки.
             result = await to_thread.run_sync(
                 self.bx.call,
                 "crm.deal.list",
                 {
                     "filter": {
-                        "CATEGORY_ID": BITRIX_STAGES.CATEGORY_ID,
                         "CLOSED": "N",
                     },
                     "select": [
