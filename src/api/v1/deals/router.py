@@ -103,15 +103,16 @@ async def change_deal_stage(
 )
 async def get_stages_info():
     return {
-        "pipeline": "Гидротех",
+        "pipeline": "Гидротех.Сделки",
         "category_id": BITRIX_STAGES.CATEGORY_ID,
         "stages": {
             "NEW": BITRIX_STAGES.NEW,
-            "PREPARATION": BITRIX_STAGES.PREPARATION,
-            "KP_CREATED": BITRIX_STAGES.KP_CREATED,
-            "KP_SENT": BITRIX_STAGES.KP_SENT,
+            "FINAL_INVOICE": BITRIX_STAGES.FINAL_INVOICE,
+            "EXECUTING": BITRIX_STAGES.EXECUTING,
             "WON": BITRIX_STAGES.WON,
             "LOSE": BITRIX_STAGES.LOSE,
+            "APOLOGY": BITRIX_STAGES.APOLOGY,
+            "LOSE_REASON_COMPETITOR": BITRIX_STAGES.LOSE_REASON_COMPETITOR,
         },
         "transitions": BITRIX_STAGES.allowed_transitions,
     }

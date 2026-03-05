@@ -128,19 +128,19 @@ class DealService:
     # ──────────────────────────────────────────────
 
     async def move_to_preparation(self, deal_id: int) -> bool:
-        """NEW → PREPARATION: менеджер подтвердил заявку и начал подготовку КП."""
-        return await self.bitrix.update_deal_stage(deal_id, BITRIX_STAGES.PREPARATION)
+        """NEW → FINAL_INVOICE: договор заключен, сделка в работе."""
+        return await self.bitrix.update_deal_stage(deal_id, BITRIX_STAGES.FINAL_INVOICE)
 
     async def move_to_kp_created(self, deal_id: int) -> bool:
-        """PREPARATION → KP_CREATED: PDF с КП сгенерирован."""
-        return await self.bitrix.update_deal_stage(deal_id, BITRIX_STAGES.KP_CREATED)
+        """FINAL_INVOICE → EXECUTING: этап АВР и накладной."""
+        return await self.bitrix.update_deal_stage(deal_id, BITRIX_STAGES.EXECUTING)
 
     async def move_to_kp_sent(self, deal_id: int) -> bool:
-        """KP_CREATED → KP_SENT: КП отправлено клиенту."""
-        return await self.bitrix.update_deal_stage(deal_id, BITRIX_STAGES.KP_SENT)
+        """EXECUTING → WON: КП/работы выполнены, сделка успешна."""
+        return await self.bitrix.update_deal_stage(deal_id, BITRIX_STAGES.WON)
 
     async def move_to_won(self, deal_id: int) -> bool:
-        """KP_SENT → WON: сделка выиграна."""
+        """Прямой перевод в WON (Сделка успешна)."""
         return await self.bitrix.update_deal_stage(deal_id, BITRIX_STAGES.WON)
 
     async def move_to_lost(self, deal_id: int) -> bool:

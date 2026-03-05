@@ -4,30 +4,49 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class BitrixStages(BaseSettings):
     """
     Стадии воронки «Гидротех» в Bitrix24.
-    CATEGORY_ID = 2  →  все стадии имеют префикс C2:
+    CATEGORY_ID = 9  →  все стадии имеют префикс C9:
 
     Жизненный цикл сделки:
-      NEW → PREPARATION → KP_CREATED → KP_SENT → WON / LOSE
+      NEW → FINAL_INVOICE → EXECUTING → WON / LOSE / APOLOGY / LOSE_REASON
     """
-    CATEGORY_ID: int = 2
+    CATEGORY_ID: int = 9
 
-    NEW: str = "C2:NEW"                  # Новая заявка
-    PREPARATION: str = "C2:PREPARATION"  # Подготовка КП (товары добавлены)
-    KP_CREATED: str = "C2:KP_CREATED"    # КП сформировано (PDF готов)
-    KP_SENT: str = "C2:KP_SENT"          # КП отправлено клиенту
-    WON: str = "C2:WON"                  # Сделка выиграна
-    LOSE: str = "C2:LOSE"                # Сделка проиграна
+    # Основные стадии воронки "Гидротех.Сделки"
+    NEW: str = "C9:NEW"                     # Интерес или ТКП
+    FINAL_INVOICE: str = "C9:FINAL_INVOICE" # Договор заключен. В работе
+    EXECUTING: str = "C9:EXECUTING"         # АВР и Накладная подписаны
+    WON: str = "C9:WON"                     # Сделка успешна
+    LOSE: str = "C9:LOSE"                   # Нет финансирования
+    APOLOGY: str = "C9:APOLOGY"             # Анализ причины провала
+    LOSE_REASON_COMPETITOR: str = "C9:UC_BVSRBV"  # Конкуренты
 
     # Допустимые переходы: из стадии → в какие стадии можно перейти
     @property
     def allowed_transitions(self) -> dict[str, list[str]]:
         return {
-            self.NEW: [self.PREPARATION, self.LOSE],
-            self.PREPARATION: [self.KP_CREATED, self.LOSE],
-            self.KP_CREATED: [self.KP_SENT, self.PREPARATION, self.LOSE],
-            self.KP_SENT: [self.WON, self.LOSE, self.PREPARATION],
+            self.NEW: [
+                self.FINAL_INVOICE,
+                self.LOSE,
+                self.APOLOGY,
+                self.LOSE_REASON_COMPETITOR,
+            ],
+            self.FINAL_INVOICE: [
+                self.EXECUTING,
+                self.WON,
+                self.LOSE,
+                self.APOLOGY,
+                self.LOSE_REASON_COMPETITOR,
+            ],
+            self.EXECUTING: [
+                self.WON,
+                self.LOSE,
+                self.APOLOGY,
+                self.LOSE_REASON_COMPETITOR,
+            ],
             self.WON: [],
-            self.LOSE: [self.NEW],
+            self.LOSE: [],
+            self.APOLOGY: [],
+            self.LOSE_REASON_COMPETITOR: [],
         }
 
 
