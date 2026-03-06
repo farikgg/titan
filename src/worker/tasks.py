@@ -272,14 +272,14 @@ def process_deal_update(deal_id: int):
 
 async def _generate_offer_pdf(offer_id: int, chat_id: int):
 
-        from src.services.pdf_service import PdfService
-        from src.db.models.offer_model import OfferModel
-        from src.db.models.audit_log import AuditLog
-        from src.db.models.user_model import UserModel
-        from src.services.telegram_service import TelegramService
-        from src.services.deal_service import DealService
-        from src.services.bitrix_service import BitrixService
-        from src.core.bitrix import get_bitrix_client
+    from src.services.pdf_service import PdfService
+    from src.db.models.offer_model import OfferModel
+    from src.db.models.audit_log import AuditLog
+    from src.db.models.user_model import UserModel
+    from src.services.telegram_service import TelegramService
+    from src.services.deal_service import DealService
+    from src.services.bitrix_service import BitrixService
+    from src.core.bitrix import get_bitrix_client
 
     tg = TelegramService()
     pdf_service = PdfService()
