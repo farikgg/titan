@@ -20,6 +20,11 @@ def _get_deal_service() -> DealService:
     return DealService(BitrixService(bx), PriceService())
 
 
+def _get_bitrix_service() -> BitrixService:
+    bx = get_bitrix_client()
+    return BitrixService(bx)
+
+
 # ──────────────────────────────────────────────
 #  Создание сделки из Telegram Mini App
 # ──────────────────────────────────────────────
@@ -95,6 +100,59 @@ async def create_deal(
         )
 
     return {"deal_id": deal_id}
+
+
+class CompanyShort(BaseModel):
+    id: int
+    title: str
+    phone: str | None = None
+    email: str | None = None
+
+
+@router.get(
+    "/companies/search",
+    dependencies=[Depends(require_permission("deals.write"))],
+    response_model=list[CompanyShort],
+    summary="Поиск компаний (клиентов) в Bitrix24 по названию",
+)
+async def search_companies(
+    q: str,
+    limit: int = 20,
+    user=Depends(get_tg_user),
+):
+    """
+    Поиск компаний в Bitrix24 для выбора клиента при создании сделки.
+
+    Параметры:
+      - q: строка поиска (начало названия или часть слова)
+      - limit: максимум результатов (по умолчанию 20)
+    """
+    bx_service = _get_bitrix_service()
+    raw_companies = await bx_service.search_companies(query=q, limit=limit)
+
+    companies: list[CompanyShort] = []
+    for c in raw_companies:
+        if not isinstance(c, dict):
+            continue
+        phones = c.get("PHONE") or []
+        emails = c.get("EMAIL") or []
+        phone = None
+        email = None
+        if isinstance(phones, list) and phones:
+            phone = phones[0].get("VALUE")
+        if isinstance(emails, list) and emails:
+            email = emails[0].get("VALUE")
+
+        companies.append(
+            CompanyShort(
+                id=int(c.get("ID")),
+                title=c.get("TITLE", ""),
+                phone=phone,
+                email=email,
+            )
+        )
+
+    return companies
 
 
 @router.get(

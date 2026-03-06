@@ -372,3 +372,50 @@ class BitrixService:
                 "Bitrix: ошибка установки товаров для сделки %s", deal_id
             )
             return False
+
+    # ──────────────────────────────────────────────
+    #  Компании (клиенты)
+    # ──────────────────────────────────────────────
+
+    async def search_companies(self, query: str, limit: int = 20) -> List[Dict]:
+        """
+        Поиск компаний в Bitrix24 по названию.
+
+        query: строка, которую ввёл пользователь (начало названия, часть слова и т.п.)
+        limit: максимальное количество результатов.
+        """
+        from anyio import to_thread
+
+        try:
+            # Используем get_all с фильтром по названию (частичное совпадение)
+            result = await to_thread.run_sync(
+                self.bx.get_all,
+                "crm.company.list",
+                {
+                    "filter": {
+                        "%TITLE": query,
+                    },
+                    "select": [
+                        "ID",
+                        "TITLE",
+                        "PHONE",
+                        "EMAIL",
+                    ],
+                    # Ограничиваем количество результатов на уровне кода
+                },
+            )
+
+            companies = list(result) if result else []
+            if limit and len(companies) > limit:
+                companies = companies[:limit]
+
+            logger.info(
+                "Bitrix: найдено %d компаний по запросу '%s'",
+                len(companies),
+                query,
+            )
+
+            return companies
+        except Exception:
+            logger.exception("Bitrix: ошибка поиска компаний по запросу '%s'", query)
+            return []

@@ -71,19 +71,36 @@ async def clear_offer(
     return {"status": "cleared"}
 
 
+from pydantic import BaseModel
+
+
+class OfferConvertRequest(BaseModel):
+    company_id: int | None = None
+    contact_id: int | None = None
+
+
 @router.post("/{offer_id}/convert")
 async def convert(
     offer_id: int,
     db: AsyncSession = Depends(get_db),
     user=Depends(get_tg_user),
+    body: OfferConvertRequest | None = None,
 ):
     service = OfferService(db)
     # Делаем логику такой же, как при авто‑создании из письма FUCHS:
     # если не указать явно, внутри будет использован DEFAULT_ASSIGNED_BY_ID.
     # Здесь можем назначать ответственным текущего пользователя Bitrix.
+    kwargs: dict = {}
+    if body:
+        if body.company_id is not None:
+            kwargs["company_id"] = body.company_id
+        if body.contact_id is not None:
+            kwargs["contact_id"] = body.contact_id
+
     deal_id = await service.convert_to_bitrix(
-        offer_id,
+        offer_id=offer_id,
         assigned_by_id=user.bitrix_user_id,
+        **kwargs,
     )
     await db.commit()
     return {"bitrix_deal_id": deal_id}

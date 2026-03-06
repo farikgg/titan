@@ -208,7 +208,14 @@ class OfferService:
     # Convert
     # --------------------------------------------------
 
-    async def convert_to_bitrix(self, offer_id: int, assigned_by_id: int | None = None):
+    async def convert_to_bitrix(
+        self,
+        offer_id: int,
+        assigned_by_id: int | None = None,
+        *,
+        company_id: int | None = None,
+        contact_id: int | None = None,
+    ):
         """
         Конвертирует КП в сделку в воронке Гидротех.
         1. Создаёт сделку (стадия NEW)
@@ -253,11 +260,13 @@ class OfferService:
             for item in items
         ]
 
-        # Создаём сделку в Bitrix24 (стадия NEW → сразу PREPARATION)
+        # Создаём сделку в Bitrix24 (стадия NEW → далее можем перевести в FINAL_INVOICE)
         deal_id = await deal_service.create_deal(
             title=f"КП #{offer.id}",
             assigned_by_id=assigned_by_id,
             currency=offer.currency or "KZT",
+            company_id=company_id,
+            contact_id=contact_id,
             products=products,
         )
 
