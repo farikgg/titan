@@ -275,6 +275,7 @@ async def _generate_offer_pdf(offer_id: int, chat_id: int):
     from src.services.pdf_service import PdfService
     from src.db.models.offer_model import OfferModel
     from src.db.models.audit_log import AuditLog
+    from src.db.models.user_model import UserModel
     from src.services.telegram_service import TelegramService
     from src.services.deal_service import DealService
     from src.services.bitrix_service import BitrixService
@@ -313,11 +314,24 @@ async def _generate_offer_pdf(offer_id: int, chat_id: int):
             await session.refresh(offer, ["items"])
             items = offer.items
 
+            # Получаем информацию о менеджере (пользователе TMA)
+            manager_name = ""
+            manager_phone = ""
+            if offer.user_id:
+                user = await session.get(UserModel, offer.user_id)
+                if user:
+                    # username из БД (можно заменить на ФИО, если появится поле)
+                    manager_name = user.username or ""
+                    # Телефон менеджера пока не храним — оставляем пустым,
+                    # но поле предусмотрено в PDF
+
             pdf_path = pdf_service.generate_offer(
                 deal={
                     "id": offer.id,
                     "title": f"КП #{offer.id}",
                     "currency": offer.currency,
+                    "manager_name": manager_name,
+                    "manager_phone": manager_phone,
                     "items": [
                         {
                             "art": i.sku,

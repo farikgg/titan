@@ -117,7 +117,24 @@ class PdfService:
         # Заголовок КП и предмет
         # ----------------------------------------
         y -= 10 * mm
-        date_str = datetime.now().strftime("от %d %B %Y г.")
+        # Форматируем дату вручную по-русски, чтобы не зависеть от локали ОС
+        now = datetime.now()
+        month_names = {
+            1: "января",
+            2: "февраля",
+            3: "марта",
+            4: "апреля",
+            5: "мая",
+            6: "июня",
+            7: "июля",
+            8: "августа",
+            9: "сентября",
+            10: "октября",
+            11: "ноября",
+            12: "декабря",
+        }
+        month_name = month_names.get(now.month, "")
+        date_str = f"от {now.day:02d} {month_name} {now.year} г."
         title = f"КОММЕРЧЕСКОЕ ПРЕДЛОЖЕНИЕ №{deal['id']} {date_str}"
         c.setFont("Arial", 12)
         c.drawString(left_x, y, title)
@@ -238,10 +255,24 @@ class PdfService:
         footer_y = table_y - 15 * mm
         c.setFont("Arial", 9)
 
-        conditions = [
-            "Условия оплаты: пост оплата 30 дней после оеврорузки продукции",
+        # Динамические условия с дефолтами
+        payment_terms = deal.get(
+            "payment_terms",
+            "Условия оплаты: постоплата 30 дней после отгрузки продукции",
+        )
+        delivery_terms = deal.get(
+            "delivery_terms",
             "Условия поставки: DDP склад Покупателя",
+        )
+        warranty_terms = deal.get(
+            "warranty_terms",
             "Гарантийный срок: 12 месяцев (при надлежащих условиях хранения)",
+        )
+
+        conditions = [
+            payment_terms,
+            delivery_terms,
+            warranty_terms,
         ]
 
         for line in conditions:
@@ -256,6 +287,17 @@ class PdfService:
         c.drawString(left_x, footer_y, "Директор")
         c.drawString(left_x + 40 * mm, footer_y, 'ТОО «ТПГ «Титан»')
         c.drawString(left_x + 95 * mm, footer_y, "Бухановский Е.С.")
+
+        # Блок контактной информации менеджера (если передана)
+        manager_name = deal.get("manager_name") or ""
+        manager_phone = deal.get("manager_phone") or ""
+        if manager_name or manager_phone:
+            footer_y -= 8 * mm
+            c.setFont("Arial", 9)
+            text = "Менеджер: " + manager_name
+            if manager_phone:
+                text += f", тел.: {manager_phone}"
+            c.drawString(left_x, footer_y, text)
 
         c.save()
         return path
