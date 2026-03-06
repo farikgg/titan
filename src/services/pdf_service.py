@@ -36,7 +36,7 @@ class PdfService:
         # ----------------------------------------
         left_x = 20 * mm
         top_margin = 20 * mm
-        current_top_y = height - top_margin
+        top_y_for_header = height - top_margin
 
         logo_path = MEDIA_DIR / LOGO_FILENAME
         if logo_path.exists():
@@ -47,8 +47,9 @@ class PdfService:
             aspect = img_width / float(img_height or 1)
             logo_width = logo_height * aspect
 
-            logo_x = (width - logo_width) / 2  # по центру страницы
-            logo_y = current_top_y - logo_height
+            # Координаты логотипа: по центру страницы
+            logo_x = (width - logo_width) / 2
+            logo_y = height - top_margin - logo_height
 
             c.drawImage(
                 logo,
@@ -60,14 +61,18 @@ class PdfService:
                 mask="auto",
             )
 
-            # Опускаем текстовую шапку чуть ниже логотипа
-            current_top_y = logo_y - 4 * mm
+            # Центр логотипа по вертикали
+            logo_center_y = logo_y + logo_height / 2
+
+            # Текстовые блоки (слева и справа) выравниваем по высоте середины логотипа
+            # Маленький сдвиг вверх, чтобы визуально смотрелось аккуратно
+            top_y_for_header = logo_center_y + 1 * mm
 
         # ----------------------------------------
         # Шапка компании (контактные данные), как в примере КП
         # ----------------------------------------
         c.setFont("Arial", 9)
-        top_y = current_top_y
+        top_y = top_y_for_header
 
         # Левый блок (казахский адрес)
         left_header_lines = [
@@ -109,19 +114,10 @@ class PdfService:
         y = y_after_header
 
         # ----------------------------------------
-        # Номер и дата КП
-        # ----------------------------------------
-        c.setFont("Arial", 10)
-        kp_number = f"КП №{deal['id']}"
-        date_str = datetime.now().strftime("от %d %B %Y г.")
-
-        y -= 6 * mm
-        c.drawString(left_x, y, kp_number + " " + date_str)
-
-        # ----------------------------------------
         # Заголовок КП и предмет
         # ----------------------------------------
         y -= 10 * mm
+        date_str = datetime.now().strftime("от %d %B %Y г.")
         title = f"КОММЕРЧЕСКОЕ ПРЕДЛОЖЕНИЕ №{deal['id']} {date_str}"
         c.setFont("Arial", 12)
         c.drawString(left_x, y, title)
