@@ -79,6 +79,12 @@ class OfferConvertRequest(BaseModel):
     contact_id: int | None = None
 
 
+class UpdateOfferTermsRequest(BaseModel):
+    payment_terms: str | None = None
+    delivery_terms: str | None = None
+    warranty_terms: str | None = None
+
+
 @router.post("/{offer_id}/convert")
 async def convert(
     offer_id: int,
@@ -104,6 +110,33 @@ async def convert(
     )
     await db.commit()
     return {"bitrix_deal_id": deal_id}
+
+
+@router.post("/{offer_id}/terms")
+async def update_terms(
+    offer_id: int,
+    body: UpdateOfferTermsRequest,
+    db: AsyncSession = Depends(get_db),
+    user=Depends(get_tg_user),
+):
+    """
+    Обновляет текстовые поля условий КП:
+      - payment_terms
+      - delivery_terms
+      - warranty_terms
+    Любое поле можно не передавать — оно не изменится.
+    """
+    service = OfferService(db)
+    try:
+        await service.update_terms(
+            offer_id,
+            payment_terms=body.payment_terms,
+            delivery_terms=body.delivery_terms,
+            warranty_terms=body.warranty_terms,
+        )
+        return {"status": "updated"}
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
 
 
 @router.post("/{offer_id}/generate-pdf")

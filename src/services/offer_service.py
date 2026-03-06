@@ -205,6 +205,51 @@ class OfferService:
         )
 
     # --------------------------------------------------
+    # Terms (payment / delivery / warranty)
+    # --------------------------------------------------
+
+    async def update_terms(
+        self,
+        offer_id: int,
+        *,
+        payment_terms: str | None = None,
+        delivery_terms: str | None = None,
+        warranty_terms: str | None = None,
+    ):
+        """
+        Обновляет текстовые поля условий для КП.
+        Любое поле можно не передавать — тогда оно не изменится.
+        """
+        offer = await self.db.get(OfferModel, offer_id)
+        if not offer:
+            raise ValueError("Offer not found")
+
+        changed = False
+
+        if payment_terms is not None:
+            offer.payment_terms = payment_terms
+            changed = True
+        if delivery_terms is not None:
+            offer.delivery_terms = delivery_terms
+            changed = True
+        if warranty_terms is not None:
+            offer.warranty_terms = warranty_terms
+            changed = True
+
+        if changed:
+            await self._log(
+                actor_type="user",
+                action="update_terms",
+                payload={
+                    "offer_id": offer_id,
+                    "payment_terms": payment_terms,
+                    "delivery_terms": delivery_terms,
+                    "warranty_terms": warranty_terms,
+                },
+            )
+            await self.db.commit()
+
+    # --------------------------------------------------
     # Convert
     # --------------------------------------------------
 
@@ -346,6 +391,9 @@ class OfferService:
             "total": float(offer.total),
             "bitrix_deal_id": offer.bitrix_deal_id,
             "currency": offer.currency,
+            "payment_terms": offer.payment_terms,
+            "delivery_terms": offer.delivery_terms,
+            "warranty_terms": offer.warranty_terms,
             "items": [
                 {
                     "sku": i.sku,
