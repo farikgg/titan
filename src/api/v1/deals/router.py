@@ -107,19 +107,26 @@ async def list_deals(
     import logging
     logger = logging.getLogger(__name__)
     
+    user_id = getattr(user, "id", None)
+    user_role = getattr(user, "role", None)
+    bitrix_user_id = getattr(user, "bitrix_user_id", None)
+    
     logger.info(
         "Deals API: запрос списка сделок от пользователя id=%s, role=%s, bitrix_user_id=%s",
-        getattr(user, "id", None),
-        getattr(user, "role", None),
-        getattr(user, "bitrix_user_id", None),
+        user_id,
+        user_role,
+        bitrix_user_id,
     )
     
     deals = await _get_deal_service().list_deals_for_user(user)
     
     logger.info(
-        "Deals API: возвращаю %d сделок для пользователя id=%s",
+        "Deals API: возвращаю %d сделок для пользователя id=%s (bitrix_user_id=%s). "
+        "Первые 3 сделки: %s",
         len(deals),
-        getattr(user, "id", None),
+        user_id,
+        bitrix_user_id,
+        [{"id": d.get("ID"), "title": d.get("TITLE"), "assigned": d.get("ASSIGNED_BY_ID")} for d in deals[:3]],
     )
     
     return deals

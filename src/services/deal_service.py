@@ -268,13 +268,33 @@ class DealService:
         не была пустая страница, делаем фоллбек: если по ответственному
         ничего не нашли — показываем все сделки в воронке.
         """
+        user_id = getattr(user, "id", None)
+        user_role = getattr(user, "role", None)
+        bitrix_user_id = getattr(user, "bitrix_user_id", None)
+        
+        logger.info(
+            "DealService.list_deals_for_user: user_id=%s, role=%s, bitrix_user_id=%s",
+            user_id,
+            user_role,
+            bitrix_user_id,
+        )
+        
         # Менеджер: сначала пробуем фильтр по ответственному
         if user.role == Role.manager.value:
             deals: List[Dict] = []
 
-            if getattr(user, "bitrix_user_id", None):
+            if bitrix_user_id:
+                logger.info(
+                    "DealService: ищу сделки для менеджера с bitrix_user_id=%s",
+                    bitrix_user_id,
+                )
                 deals = await self.bitrix.get_deals(
-                    bitrix_user_id=user.bitrix_user_id
+                    bitrix_user_id=bitrix_user_id
+                )
+                logger.info(
+                    "DealService: найдено %d сделок для менеджера bitrix_user_id=%s",
+                    len(deals),
+                    bitrix_user_id,
                 )
 
             # Если ничего не нашли (или bitrix_user_id нет) — фоллбек на все сделки
@@ -282,12 +302,27 @@ class DealService:
                 logger.warning(
                     "DealService: для manager id=%s (bitrix_user_id=%s) сделки не найдены, "
                     "возвращаю все сделки в воронке",
-                    getattr(user, "id", None),
-                    getattr(user, "bitrix_user_id", None),
+                    user_id,
+                    bitrix_user_id,
                 )
-                return await self.bitrix.get_all_deals()
+                all_deals = await self.bitrix.get_all_deals()
+                logger.info(
+                    "DealService: фоллбек вернул %d сделок",
+                    len(all_deals),
+                )
+                return all_deals
 
             return deals
 
         # Руководители / админы — сразу все сделки в воронке
-        return await self.bitrix.get_all_deals()
+        logger.info(
+            "DealService: пользователь role=%s, возвращаю все сделки",
+            user_role,
+        )
+        all_deals = await self.bitrix.get_all_deals()
+        logger.info(
+            "DealService: найдено %d сделок для role=%s",
+            len(all_deals),
+            user_role,
+        )
+        return all_deals
