@@ -2,6 +2,7 @@ import logging
 from typing import List, Dict, Optional
 
 from anyio import to_thread
+from pathlib import Path
 from fast_bitrix24 import Bitrix
 
 from src.app.config import BITRIX_STAGES
@@ -370,6 +371,59 @@ class BitrixService:
         except Exception:
             logger.exception(
                 "Bitrix: ошибка установки товаров для сделки %s", deal_id
+            )
+            return False
+
+    # ──────────────────────────────────────────────
+    #  Файлы / КП в сделке
+    # ──────────────────────────────────────────────
+
+    async def attach_kp_pdf(self, deal_id: int, pdf_path: Path) -> bool:
+        """
+        Прикрепляет PDF КП к сделке в Bitrix24 в пользовательское поле файла.
+
+        ВНИМАНИЕ: код поля UF_CRM_... нужно держать в синхронизации с Bitrix.
+        Сейчас используется поле:
+          - UF_CRM_1744861655415 — «Вложить Договор и Спецификацию»
+        """
+        uf_field_code = "UF_CRM_1744861655415"
+
+        try:
+            if not pdf_path.exists():
+                logger.error("attach_kp_pdf: файл %s не найден", pdf_path)
+                return False
+
+            file_bytes = pdf_path.read_bytes()
+
+            fields = {
+                uf_field_code: [
+                    {
+                        "fileData": (
+                            pdf_path.name,
+                            file_bytes,
+                        )
+                    }
+                ]
+            }
+
+            await to_thread.run_sync(
+                self.bx.call,
+                "crm.deal.update",
+                {"id": deal_id, "fields": fields},
+            )
+
+            logger.info(
+                "Bitrix: к сделке %s прикреплён файл КП %s в поле %s",
+                deal_id,
+                pdf_path.name,
+                uf_field_code,
+            )
+            return True
+        except Exception:
+            logger.exception(
+                "Bitrix: ошибка прикрепления КП %s к сделке %s",
+                pdf_path,
+                deal_id,
             )
             return False
 

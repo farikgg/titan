@@ -162,6 +162,7 @@ async def search_companies(
 async def list_deals(
     user=Depends(get_tg_user),
     stage: str | None = None,  # Фильтр по стадии: NEW, FINAL_INVOICE, EXECUTING, WON, LOSE
+    manager_bitrix_id: int | None = None,  # Для руководителей/админов: фильтр по ответственному
 ):
     import logging
     logger = logging.getLogger(__name__)
@@ -188,16 +189,26 @@ async def list_deals(
                 stage,
             )
     
+    # Менеджеру нельзя override-ить ответственного — он всегда видит только свои сделки.
+    assigned_param = None
+    if user_role in ("head-manager", "admin") and manager_bitrix_id:
+        assigned_param = manager_bitrix_id
+
     logger.info(
-        "Deals API: запрос списка сделок от пользователя id=%s, role=%s, bitrix_user_id=%s, stage=%s (stage_id=%s)",
+        "Deals API: запрос списка сделок от пользователя id=%s, role=%s, bitrix_user_id=%s, stage=%s (stage_id=%s), manager_bitrix_id=%s",
         user_id,
         user_role,
         bitrix_user_id,
         stage,
         stage_id,
+        assigned_param,
     )
     
-    deals = await _get_deal_service().list_deals_for_user(user, stage_id=stage_id)
+    deals = await _get_deal_service().list_deals_for_user(
+        user,
+        stage_id=stage_id,
+        assigned_by_id=assigned_param,
+    )
     
     # Безопасная обработка: проверяем, что deals - это список
     if not isinstance(deals, list):
