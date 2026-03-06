@@ -103,6 +103,7 @@ async def create_deal(
 )
 async def list_deals(
     user=Depends(get_tg_user),
+    stage: str | None = None,  # Фильтр по стадии: NEW, FINAL_INVOICE, EXECUTING, WON, LOSE
 ):
     import logging
     logger = logging.getLogger(__name__)
@@ -111,14 +112,34 @@ async def list_deals(
     user_role = getattr(user, "role", None)
     bitrix_user_id = getattr(user, "bitrix_user_id", None)
     
+    # Маппинг названий стадий на STAGE_ID
+    stage_map = {
+        "NEW": BITRIX_STAGES.NEW,
+        "FINAL_INVOICE": BITRIX_STAGES.FINAL_INVOICE,
+        "EXECUTING": BITRIX_STAGES.EXECUTING,
+        "WON": BITRIX_STAGES.WON,
+        "LOSE": BITRIX_STAGES.LOSE,
+    }
+    
+    stage_id = None
+    if stage:
+        stage_id = stage_map.get(stage.upper())
+        if not stage_id:
+            logger.warning(
+                "Deals API: неизвестная стадия '%s', игнорирую фильтр",
+                stage,
+            )
+    
     logger.info(
-        "Deals API: запрос списка сделок от пользователя id=%s, role=%s, bitrix_user_id=%s",
+        "Deals API: запрос списка сделок от пользователя id=%s, role=%s, bitrix_user_id=%s, stage=%s (stage_id=%s)",
         user_id,
         user_role,
         bitrix_user_id,
+        stage,
+        stage_id,
     )
     
-    deals = await _get_deal_service().list_deals_for_user(user)
+    deals = await _get_deal_service().list_deals_for_user(user, stage_id=stage_id)
     
     # Безопасная обработка: проверяем, что deals - это список
     if not isinstance(deals, list):
@@ -222,13 +243,51 @@ async def change_deal_stage(
 
 @router.get(
     "/stages/info",
-    summary="Получить список стадий воронки Гидротех",
+    summary="Получить список стадий воронки Гидротех.Сделки",
 )
 async def get_stages_info():
+    """
+    Возвращает информацию о стадиях воронки «Гидротех.Сделки».
+    Основные стадии (для фильтрации в UI):
+    - NEW: Интерес или ТКП
+    - FINAL_INVOICE: Договор заключен. В работе
+    - EXECUTING: АВР и Накладная подписаны
+    - WON: Сделка успешна
+    - LOSE: Нет финансирования
+    """
     return {
         "pipeline": "Гидротех.Сделки",
         "category_id": BITRIX_STAGES.CATEGORY_ID,
-        "stages": {
+        # Основные стадии для фильтрации (5 штук)
+        "main_stages": [
+            {
+                "key": "NEW",
+                "stage_id": BITRIX_STAGES.NEW,
+                "name": "Интерес или ТКП",
+            },
+            {
+                "key": "FINAL_INVOICE",
+                "stage_id": BITRIX_STAGES.FINAL_INVOICE,
+                "name": "Договор заключен. В работе",
+            },
+            {
+                "key": "EXECUTING",
+                "stage_id": BITRIX_STAGES.EXECUTING,
+                "name": "АВР и Накладная подписаны",
+            },
+            {
+                "key": "WON",
+                "stage_id": BITRIX_STAGES.WON,
+                "name": "Сделка успешна",
+            },
+            {
+                "key": "LOSE",
+                "stage_id": BITRIX_STAGES.LOSE,
+                "name": "Нет финансирования",
+            },
+        ],
+        # Все стадии (для справки)
+        "all_stages": {
             "NEW": BITRIX_STAGES.NEW,
             "FINAL_INVOICE": BITRIX_STAGES.FINAL_INVOICE,
             "EXECUTING": BITRIX_STAGES.EXECUTING,

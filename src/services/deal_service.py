@@ -257,7 +257,7 @@ class DealService:
             "resolved_prices": resolved_prices,
         }
 
-    async def list_deals_for_user(self, user) -> List[Dict]:
+    async def list_deals_for_user(self, user, stage_id: str | None = None) -> List[Dict]:
         """
         Row-level RBAC:
         - manager: только свои сделки (воронка Гидротех)
@@ -285,11 +285,13 @@ class DealService:
 
             if bitrix_user_id:
                 logger.info(
-                    "DealService: ищу сделки для менеджера с bitrix_user_id=%s",
+                    "DealService: ищу сделки для менеджера с bitrix_user_id=%s, stage_id=%s",
                     bitrix_user_id,
+                    stage_id,
                 )
                 deals = await self.bitrix.get_deals(
-                    bitrix_user_id=bitrix_user_id
+                    bitrix_user_id=bitrix_user_id,
+                    stage_id=stage_id,
                 )
                 logger.info(
                     "DealService: найдено %d сделок для менеджера bitrix_user_id=%s",
@@ -301,11 +303,12 @@ class DealService:
             if not deals:
                 logger.warning(
                     "DealService: для manager id=%s (bitrix_user_id=%s) сделки не найдены, "
-                    "возвращаю все сделки в воронке",
+                    "возвращаю все сделки в воронке (stage_id=%s)",
                     user_id,
                     bitrix_user_id,
+                    stage_id,
                 )
-                all_deals = await self.bitrix.get_all_deals()
+                all_deals = await self.bitrix.get_all_deals(stage_id=stage_id)
                 logger.info(
                     "DealService: фоллбек вернул %d сделок",
                     len(all_deals),
@@ -316,10 +319,11 @@ class DealService:
 
         # Руководители / админы — сразу все сделки в воронке
         logger.info(
-            "DealService: пользователь role=%s, возвращаю все сделки",
+            "DealService: пользователь role=%s, возвращаю все сделки (stage_id=%s)",
             user_role,
+            stage_id,
         )
-        all_deals = await self.bitrix.get_all_deals()
+        all_deals = await self.bitrix.get_all_deals(stage_id=stage_id)
         logger.info(
             "DealService: найдено %d сделок для role=%s",
             len(all_deals),

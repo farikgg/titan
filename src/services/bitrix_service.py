@@ -13,19 +13,24 @@ class BitrixService:
     def __init__(self, bx: Bitrix):
         self.bx = bx
 
-    async def get_deals(self, bitrix_user_id: int) -> List[Dict]:
+    async def get_deals(self, bitrix_user_id: int, stage_id: str | None = None) -> List[Dict]:
         try:
             # Сначала пробуем найти сделки в воронке Гидротех (CATEGORY_ID = 9)
             # Используем get_all() для методов .list, как рекомендует fast_bitrix24
+            filter_dict = {
+                "ASSIGNED_BY_ID": bitrix_user_id,
+                "CATEGORY_ID": BITRIX_STAGES.CATEGORY_ID,
+                "CLOSED": "N",
+            }
+            # Если указана стадия — добавляем фильтр
+            if stage_id:
+                filter_dict["STAGE_ID"] = stage_id
+            
             result = await to_thread.run_sync(
                 self.bx.get_all,
                 "crm.deal.list",
                 {
-                    "filter": {
-                        "ASSIGNED_BY_ID": bitrix_user_id,
-                        "CATEGORY_ID": BITRIX_STAGES.CATEGORY_ID,
-                        "CLOSED": "N",
-                    },
+                    "filter": filter_dict,
                     "select": [
                         "ID",
                         "TITLE",
@@ -116,18 +121,23 @@ class BitrixService:
             )
             return []
 
-    async def get_all_deals(self) -> List[Dict]:
+    async def get_all_deals(self, stage_id: str | None = None) -> List[Dict]:
         try:
             # Сначала пробуем найти все сделки в воронке Гидротех (CATEGORY_ID = 9)
             # Используем get_all() для методов .list, как рекомендует fast_bitrix24
+            filter_dict = {
+                "CATEGORY_ID": BITRIX_STAGES.CATEGORY_ID,
+                "CLOSED": "N",
+            }
+            # Если указана стадия — добавляем фильтр
+            if stage_id:
+                filter_dict["STAGE_ID"] = stage_id
+            
             result = await to_thread.run_sync(
                 self.bx.get_all,
                 "crm.deal.list",
                 {
-                    "filter": {
-                        "CATEGORY_ID": BITRIX_STAGES.CATEGORY_ID,
-                        "CLOSED": "N",
-                    },
+                    "filter": filter_dict,
                     "select": [
                         "ID",
                         "TITLE",
