@@ -97,11 +97,66 @@ class BitrixService:
                 "crm.deal.get",
                 {"id": deal_id},
             )
-            # fast_bitrix24 может вернуть список — берём первый элемент
-            if isinstance(result, list):
+            
+            # fast_bitrix24 может вернуть словарь с ключом "result" или список
+            if isinstance(result, dict):
+                # Если есть ключ "result" — извлекаем данные оттуда
+                if "result" in result:
+                    inner_result = result["result"]
+                    # Если внутри словарь — это и есть сделка
+                    if isinstance(inner_result, dict):
+                        result = inner_result
+                    # Если внутри список — берём первый элемент
+                    elif isinstance(inner_result, list):
+                        result = inner_result[0] if inner_result else None
+                    else:
+                        result = inner_result
+                # Если нет ключа "result", но есть "ID" — это уже сделка
+                elif "ID" in result:
+                    pass  # result уже правильный
+                else:
+                    logger.warning(
+                        "Bitrix: get_deal вернул словарь без 'ID' и без 'result'. "
+                        "Тип: %s, ключи: %s, значение: %s",
+                        type(result),
+                        list(result.keys()) if isinstance(result, dict) else None,
+                        result,
+                    )
+            elif isinstance(result, list):
+                # Если список — берём первый элемент
                 result = result[0] if result else None
+            elif result is None:
+                logger.warning("Bitrix: get_deal(%s) вернул None", deal_id)
+                return None
+            else:
+                logger.warning(
+                    "Bitrix: get_deal(%s) вернул неожиданный тип: %s, значение: %s",
+                    deal_id,
+                    type(result),
+                    result,
+                )
+                return None
 
-            logger.debug("Bitrix: get_deal(%s) → %s", deal_id, result)
+            # Проверяем, что результат — это словарь с ключом "ID"
+            if not isinstance(result, dict):
+                logger.error(
+                    "Bitrix: get_deal(%s) вернул не словарь после обработки. Тип: %s, значение: %s",
+                    deal_id,
+                    type(result),
+                    result,
+                )
+                return None
+            
+            if "ID" not in result:
+                logger.error(
+                    "Bitrix: get_deal(%s) вернул словарь без ключа 'ID'. Ключи: %s, значение: %s",
+                    deal_id,
+                    list(result.keys()),
+                    result,
+                )
+                return None
+
+            logger.debug("Bitrix: get_deal(%s) → ID=%s", deal_id, result.get("ID"))
             return result
         except Exception:
             logger.exception("Bitrix: ошибка получения сделки %s", deal_id)

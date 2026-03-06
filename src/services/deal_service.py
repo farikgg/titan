@@ -232,6 +232,25 @@ class DealService:
         """Получает сделку с товарами и обогащёнными ценами."""
         deal = await self.bitrix.get_deal(deal_id)
         if not deal:
+            logger.warning("DealService: сделка %s не найдена в Bitrix", deal_id)
+            return None
+        
+        # Дополнительная проверка: убеждаемся, что deal - это словарь с нужными ключами
+        if not isinstance(deal, dict):
+            logger.error(
+                "DealService: get_deal вернул не словарь для сделки %s. Тип: %s, значение: %s",
+                deal_id,
+                type(deal),
+                deal,
+            )
+            return None
+        
+        if "ID" not in deal:
+            logger.error(
+                "DealService: сделка %s не содержит ключ 'ID'. Ключи: %s",
+                deal_id,
+                list(deal.keys()) if isinstance(deal, dict) else None,
+            )
             return None
 
         products = await self.bitrix.get_deal_products(deal_id)
