@@ -15,14 +15,14 @@ class BitrixService:
 
     async def get_deals(self, bitrix_user_id: int) -> List[Dict]:
         try:
-            # Показываем все активные сделки пользователя,
-            # не ограничиваясь только воронкой Гидротех.
+            # Сначала пробуем найти сделки в воронке Гидротех (CATEGORY_ID = 9)
             result = await to_thread.run_sync(
                 self.bx.call,
                 "crm.deal.list",
                 {
                     "filter": {
                         "ASSIGNED_BY_ID": bitrix_user_id,
+                        "CATEGORY_ID": BITRIX_STAGES.CATEGORY_ID,
                         "CLOSED": "N",
                     },
                     "select": [
@@ -36,7 +36,48 @@ class BitrixService:
                     ],
                 },
             )
-            return result or []
+            deals = result or []
+            logger.info(
+                "Bitrix: найдено %d сделок для пользователя %s в воронке %s",
+                len(deals),
+                bitrix_user_id,
+                BITRIX_STAGES.CATEGORY_ID,
+            )
+            
+            # Если в воронке Гидротех ничего нет — пробуем все незакрытые сделки пользователя
+            if not deals:
+                logger.info(
+                    "Bitrix: сделок в воронке %s не найдено, ищу все незакрытые сделки пользователя %s",
+                    BITRIX_STAGES.CATEGORY_ID,
+                    bitrix_user_id,
+                )
+                result = await to_thread.run_sync(
+                    self.bx.call,
+                    "crm.deal.list",
+                    {
+                        "filter": {
+                            "ASSIGNED_BY_ID": bitrix_user_id,
+                            "CLOSED": "N",
+                        },
+                        "select": [
+                            "ID",
+                            "TITLE",
+                            "STAGE_ID",
+                            "CATEGORY_ID",
+                            "OPPORTUNITY",
+                            "CURRENCY_ID",
+                            "ASSIGNED_BY_ID",
+                        ],
+                    },
+                )
+                deals = result or []
+                logger.info(
+                    "Bitrix: найдено %d незакрытых сделок пользователя %s (все воронки)",
+                    len(deals),
+                    bitrix_user_id,
+                )
+            
+            return deals
         except Exception:
             logger.exception("Bitrix: ошибка получения списка сделок")
             return []
@@ -74,13 +115,13 @@ class BitrixService:
 
     async def get_all_deals(self) -> List[Dict]:
         try:
-            # Возвращаем все незакрытые сделки без ограничения по воронке,
-            # чтобы в мини‑приложении были видны любые созданные сделки.
+            # Сначала пробуем найти все сделки в воронке Гидротех (CATEGORY_ID = 9)
             result = await to_thread.run_sync(
                 self.bx.call,
                 "crm.deal.list",
                 {
                     "filter": {
+                        "CATEGORY_ID": BITRIX_STAGES.CATEGORY_ID,
                         "CLOSED": "N",
                     },
                     "select": [
@@ -94,7 +135,44 @@ class BitrixService:
                     ],
                 },
             )
-            return result or []
+            deals = result or []
+            logger.info(
+                "Bitrix: найдено %d незакрытых сделок в воронке %s",
+                len(deals),
+                BITRIX_STAGES.CATEGORY_ID,
+            )
+            
+            # Если в воронке Гидротех ничего нет — пробуем все незакрытые сделки
+            if not deals:
+                logger.info(
+                    "Bitrix: сделок в воронке %s не найдено, ищу все незакрытые сделки",
+                    BITRIX_STAGES.CATEGORY_ID,
+                )
+                result = await to_thread.run_sync(
+                    self.bx.call,
+                    "crm.deal.list",
+                    {
+                        "filter": {
+                            "CLOSED": "N",
+                        },
+                        "select": [
+                            "ID",
+                            "TITLE",
+                            "STAGE_ID",
+                            "CATEGORY_ID",
+                            "OPPORTUNITY",
+                            "CURRENCY_ID",
+                            "ASSIGNED_BY_ID",
+                        ],
+                    },
+                )
+                deals = result or []
+                logger.info(
+                    "Bitrix: найдено %d незакрытых сделок (все воронки)",
+                    len(deals),
+                )
+            
+            return deals
         except Exception:
             logger.exception("Bitrix: error fetching all deals")
             return []

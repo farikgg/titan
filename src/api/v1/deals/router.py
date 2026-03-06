@@ -104,7 +104,25 @@ async def create_deal(
 async def list_deals(
     user=Depends(get_tg_user),
 ):
-    return await _get_deal_service().list_deals_for_user(user)
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    logger.info(
+        "Deals API: запрос списка сделок от пользователя id=%s, role=%s, bitrix_user_id=%s",
+        getattr(user, "id", None),
+        getattr(user, "role", None),
+        getattr(user, "bitrix_user_id", None),
+    )
+    
+    deals = await _get_deal_service().list_deals_for_user(user)
+    
+    logger.info(
+        "Deals API: возвращаю %d сделок для пользователя id=%s",
+        len(deals),
+        getattr(user, "id", None),
+    )
+    
+    return deals
 
 
 @router.get(
