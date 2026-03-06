@@ -120,13 +120,34 @@ async def list_deals(
     
     deals = await _get_deal_service().list_deals_for_user(user)
     
+    # Безопасная обработка: проверяем, что deals - это список
+    if not isinstance(deals, list):
+        logger.error(
+            "Deals API: list_deals_for_user вернул не список! Тип: %s, значение: %s",
+            type(deals),
+            deals,
+        )
+        deals = []
+    
+    # Безопасное логирование первых 3 сделок
+    preview = []
+    if deals:
+        try:
+            preview = [
+                {"id": d.get("ID"), "title": d.get("TITLE"), "assigned": d.get("ASSIGNED_BY_ID")}
+                for d in deals[:3]
+            ]
+        except (TypeError, AttributeError, KeyError) as e:
+            logger.warning("Deals API: ошибка при формировании preview сделок: %s", e)
+            preview = [f"Ошибка: {type(d)}" for d in deals[:3] if deals]
+    
     logger.info(
         "Deals API: возвращаю %d сделок для пользователя id=%s (bitrix_user_id=%s). "
         "Первые 3 сделки: %s",
         len(deals),
         user_id,
         bitrix_user_id,
-        [{"id": d.get("ID"), "title": d.get("TITLE"), "assigned": d.get("ASSIGNED_BY_ID")} for d in deals[:3]],
+        preview,
     )
     
     return deals

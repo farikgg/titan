@@ -16,8 +16,9 @@ class BitrixService:
     async def get_deals(self, bitrix_user_id: int) -> List[Dict]:
         try:
             # Сначала пробуем найти сделки в воронке Гидротех (CATEGORY_ID = 9)
+            # Используем get_all() для методов .list, как рекомендует fast_bitrix24
             result = await to_thread.run_sync(
-                self.bx.call,
+                self.bx.get_all,
                 "crm.deal.list",
                 {
                     "filter": {
@@ -36,7 +37,8 @@ class BitrixService:
                     ],
                 },
             )
-            deals = result or []
+            # get_all() всегда возвращает список
+            deals = list(result) if result else []
             logger.info(
                 "Bitrix: найдено %d сделок для пользователя %s в воронке %s",
                 len(deals),
@@ -52,7 +54,7 @@ class BitrixService:
                     bitrix_user_id,
                 )
                 result = await to_thread.run_sync(
-                    self.bx.call,
+                    self.bx.get_all,
                     "crm.deal.list",
                     {
                         "filter": {
@@ -70,7 +72,8 @@ class BitrixService:
                         ],
                     },
                 )
-                deals = result or []
+                # get_all() всегда возвращает список
+                deals = list(result) if result else []
                 logger.info(
                     "Bitrix: найдено %d незакрытых сделок пользователя %s (все воронки)",
                     len(deals),
@@ -116,8 +119,9 @@ class BitrixService:
     async def get_all_deals(self) -> List[Dict]:
         try:
             # Сначала пробуем найти все сделки в воронке Гидротех (CATEGORY_ID = 9)
+            # Используем get_all() для методов .list, как рекомендует fast_bitrix24
             result = await to_thread.run_sync(
-                self.bx.call,
+                self.bx.get_all,
                 "crm.deal.list",
                 {
                     "filter": {
@@ -135,7 +139,8 @@ class BitrixService:
                     ],
                 },
             )
-            deals = result or []
+            # get_all() всегда возвращает список
+            deals = list(result) if result else []
             logger.info(
                 "Bitrix: найдено %d незакрытых сделок в воронке %s",
                 len(deals),
@@ -149,7 +154,7 @@ class BitrixService:
                     BITRIX_STAGES.CATEGORY_ID,
                 )
                 result = await to_thread.run_sync(
-                    self.bx.call,
+                    self.bx.get_all,
                     "crm.deal.list",
                     {
                         "filter": {
@@ -166,7 +171,8 @@ class BitrixService:
                         ],
                     },
                 )
-                deals = result or []
+                # get_all() всегда возвращает список
+                deals = list(result) if result else []
                 logger.info(
                     "Bitrix: найдено %d незакрытых сделок (все воронки)",
                     len(deals),
