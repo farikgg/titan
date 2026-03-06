@@ -473,3 +473,63 @@ class BitrixService:
         except Exception:
             logger.exception("Bitrix: ошибка поиска компаний по запросу '%s'", query)
             return []
+
+    # ──────────────────────────────────────────────
+    #  Контакты
+    # ──────────────────────────────────────────────
+
+    async def search_contacts(
+        self,
+        query: str,
+        limit: int = 20,
+        company_id: int | None = None,
+    ) -> List[Dict]:
+        """
+        Поиск контактов в Bitrix24.
+
+        query: строка поиска по имени/фамилии/отчеству.
+        company_id: если указан — ищем только контакты этой компании.
+        """
+        try:
+            filter_dict: Dict[str, object] = {
+                "%NAME": query,
+            }
+            if company_id is not None:
+                filter_dict["COMPANY_ID"] = company_id
+
+            result = await to_thread.run_sync(
+                self.bx.get_all,
+                "crm.contact.list",
+                {
+                    "filter": filter_dict,
+                    "select": [
+                        "ID",
+                        "NAME",
+                        "LAST_NAME",
+                        "SECOND_NAME",
+                        "PHONE",
+                        "EMAIL",
+                        "COMPANY_ID",
+                    ],
+                },
+            )
+
+            contacts = list(result) if result else []
+            if limit and len(contacts) > limit:
+                contacts = contacts[:limit]
+
+            logger.info(
+                "Bitrix: найдено %d контактов по запросу '%s' (company_id=%s)",
+                len(contacts),
+                query,
+                company_id,
+            )
+
+            return contacts
+        except Exception:
+            logger.exception(
+                "Bitrix: ошибка поиска контактов по запросу '%s' (company_id=%s)",
+                query,
+                company_id,
+            )
+            return []

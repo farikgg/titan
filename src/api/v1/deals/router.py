@@ -33,6 +33,7 @@ def _get_bitrix_service() -> BitrixService:
 class CreateDealRequest(BaseModel):
     title: str
     company_id: int
+    contact_id: int | None = None
     stage: str = "NEW"  # NEW / FINAL_INVOICE / EXECUTING / WON / LOSE / APOLOGY / LOSE_REASON_COMPETITOR
     solution: str  # systems_lubrication / lubricant / fire_systems
     amount: float
@@ -85,6 +86,7 @@ async def create_deal(
         deal_id = await service.create_deal_from_miniapp(
             title=body.title,
             company_id=body.company_id,
+            contact_id=body.contact_id,
             stage_id=stage_id,
             solution_code=body.solution,
             amount=body.amount,
@@ -105,6 +107,13 @@ async def create_deal(
 class CompanyShort(BaseModel):
     id: int
     title: str
+    phone: str | None = None
+    email: str | None = None
+
+
+class ContactShort(BaseModel):
+    id: int
+    name: str
     phone: str | None = None
     email: str | None = None
 
@@ -153,6 +162,67 @@ async def search_companies(
         )
 
     return companies
+
+
+@router.get(
+    "/contacts/search",
+    dependencies=[Depends(require_permission("deals.write"))],
+    response_model=list[ContactShort],
+    summary="Поиск контактов в Bitrix24 по имени (опционально по компании)",
+)
+async def search_contacts(
+    q: str,
+    company_id: int | None = None,
+    limit: int = 20,
+    user=Depends(get_tg_user),
+):
+    """
+    Поиск контактов в Bitrix24 для выбора контактного лица при создании сделки.
+
+    Параметры:
+      - q: строка поиска по имени/фамилии
+      - company_id: если указан — фильтрация по компании
+      - limit: максимум результатов (по умолчанию 20)
+    """
+    bx_service = _get_bitrix_service()
+    raw_contacts = await bx_service.search_contacts(
+        query=q,
+        limit=limit,
+        company_id=company_id,
+    )
+
+    contacts: list[ContactShort] = []
+    for c in raw_contacts:
+        if not isinstance(c, dict):
+            continue
+
+        first_name = (c.get("NAME") or "").strip()
+        last_name = (c.get("LAST_NAME") or "").strip()
+        second_name = (c.get("SECOND_NAME") or "").strip()
+
+        # Собираем ФИО
+        parts = [p for p in [last_name, first_name, second_name] if p]
+        full_name = " ".join(parts) if parts else (first_name or last_name or "")
+
+        phones = c.get("PHONE") or []
+        emails = c.get("EMAIL") or []
+        phone = None
+        email = None
+        if isinstance(phones, list) and phones:
+            phone = phones[0].get("VALUE")
+        if isinstance(emails, list) and emails:
+            email = emails[0].get("VALUE")
+
+        contacts.append(
+            ContactShort(
+                id=int(c.get("ID")),
+                name=full_name,
+                phone=phone,
+                email=email,
+            )
+        )
+
+    return contacts
 
 
 @router.get(

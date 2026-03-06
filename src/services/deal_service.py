@@ -102,6 +102,7 @@ class DealService:
         *,
         title: str,
         company_id: int,
+        contact_id: int | None,
         stage_id: str,
         solution_code: str,
         amount: float,
@@ -141,6 +142,9 @@ class DealService:
             # Выберите решение
             "UF_CRM_1744862002484": solution_enum_id,
         }
+
+        if contact_id:
+            fields["CONTACT_ID"] = contact_id
 
         deal_id = await self.bitrix.create_deal(fields)
         if not deal_id:
