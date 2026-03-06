@@ -99,7 +99,7 @@ class BitrixService:
                 {"id": deal_id},
             )
             
-            # fast_bitrix24 может вернуть словарь с ключом "result" или список
+            # fast_bitrix24 может вернуть словарь с ключом "result" или список/обёртку
             if isinstance(result, dict):
                 # Если есть ключ "result" — извлекаем данные оттуда
                 if "result" in result:
@@ -116,13 +116,29 @@ class BitrixService:
                 elif "ID" in result:
                     pass  # result уже правильный
                 else:
-                    logger.warning(
-                        "Bitrix: get_deal вернул словарь без 'ID' и без 'result'. "
-                        "Тип: %s, ключи: %s, значение: %s",
-                        type(result),
-                        list(result.keys()) if isinstance(result, dict) else None,
-                        result,
-                    )
+                    # Некоторые интеграции Bitrix возвращают обёртку вида:
+                    # {"order0000000000": { "ID": "...", ... }}
+                    # Если видим один ключ и внутри словарь с ID — разворачиваем.
+                    if len(result) == 1:
+                        only_value = next(iter(result.values()))
+                        if isinstance(only_value, dict) and "ID" in only_value:
+                            result = only_value
+                        else:
+                            logger.warning(
+                                "Bitrix: get_deal вернул словарь без 'ID' и без 'result' "
+                                "(один ключ, но неожиданное значение). Тип: %s, ключи: %s, значение: %s",
+                                type(result),
+                                list(result.keys()),
+                                result,
+                            )
+                    else:
+                        logger.warning(
+                            "Bitrix: get_deal вернул словарь без 'ID' и без 'result'. "
+                            "Тип: %s, ключи: %s, значение: %s",
+                            type(result),
+                            list(result.keys()),
+                            result,
+                        )
             elif isinstance(result, list):
                 # Если список — берём первый элемент
                 result = result[0] if result else None
