@@ -236,7 +236,19 @@ class DealService:
 
         products = await self.bitrix.get_deal_products(deal_id)
 
-        skus = [p.get("PRODUCT_NAME", "") for p in products]
+        # Безопасная обработка: проверяем, что products - это список словарей
+        if not isinstance(products, list):
+            logger.error(
+                "DealService: get_deal_products вернул не список! Тип: %s, значение: %s",
+                type(products),
+                products,
+            )
+            products = []
+        
+        # Фильтруем только словари (игнорируем строки или другие типы)
+        valid_products = [p for p in products if isinstance(p, dict)]
+        
+        skus = [p.get("PRODUCT_NAME", "") for p in valid_products]
         resolved_prices = await self.price_service.resolve_prices(
             db=db,
             skus=skus,
@@ -253,7 +265,7 @@ class DealService:
                 "opportunity": deal["OPPORTUNITY"],
                 "assigned_by_id": deal["ASSIGNED_BY_ID"],
             },
-            "products": products,
+            "products": valid_products,
             "resolved_prices": resolved_prices,
         }
 

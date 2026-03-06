@@ -114,7 +114,32 @@ class BitrixService:
                 "crm.deal.productrows.get",
                 {"id": deal_id},
             )
-            return result or []
+            # fast_bitrix24 может вернуть словарь с ключом "result" или список напрямую
+            if isinstance(result, dict):
+                # Если это словарь, возможно товары в result["result"] или result
+                products = result.get("result", result)
+                if isinstance(products, list):
+                    return products
+                elif isinstance(products, dict):
+                    # Если это один товар в виде словаря, оборачиваем в список
+                    return [products] if products else []
+                else:
+                    logger.warning(
+                        "Bitrix: get_deal_products вернул неожиданный тип: %s, значение: %s",
+                        type(products),
+                        products,
+                    )
+                    return []
+            elif isinstance(result, list):
+                # Если это уже список — возвращаем как есть
+                return result
+            else:
+                logger.warning(
+                    "Bitrix: get_deal_products вернул неожиданный тип: %s, значение: %s",
+                    type(result),
+                    result,
+                )
+                return []
         except Exception:
             logger.exception(
                 "Bitrix: ошибка получения товаров сделки %s", deal_id
