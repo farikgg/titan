@@ -391,9 +391,11 @@ class OfferService:
             "total": float(offer.total),
             "bitrix_deal_id": offer.bitrix_deal_id,
             "currency": offer.currency,
-            "payment_terms": offer.payment_terms,
-            "delivery_terms": offer.delivery_terms,
-            "warranty_terms": offer.warranty_terms,
+            # Эти поля могут отсутствовать в старых версиях модели/миграций,
+            # поэтому берём их через getattr с дефолтом None.
+            "payment_terms": getattr(offer, "payment_terms", None),
+            "delivery_terms": getattr(offer, "delivery_terms", None),
+            "warranty_terms": getattr(offer, "warranty_terms", None),
             "items": [
                 {
                     "sku": i.sku,
