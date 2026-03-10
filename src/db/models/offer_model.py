@@ -42,4 +42,3 @@ class OfferModel(Base):
         cascade="all, delete-orphan"
     )
     currency: Mapped[str | None] = mapped_column(String(3), nullable=True)
-

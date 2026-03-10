@@ -134,7 +134,7 @@ class PdfService:
         y = y_after_header
 
         # ----------------------------------------
-        # Заголовок КП и предмет
+        # Заголовок КП (без жёстко прошитого названия товара)
         # ----------------------------------------
         y -= 10 * mm
         # Форматируем дату вручную по-русски, чтобы не зависеть от локали ОС
@@ -159,17 +159,12 @@ class PdfService:
         c.setFont("Arial", 12)
         c.drawString(left_x, y, title)
 
-        # Предмет КП: берём название первого товара, если есть
-        items = deal.get("items", [])
-        subject = ""
-        if items:
-            first_name = items[0].get("name") or ""
-            subject = f"на {first_name}"
+        # Раньше здесь выводили строку вида "на RENOLIT CX-EP 2" (название первого товара).
+        # По новым требованиям не указываем конкретного клиента/товар в заголовке,
+        # поэтому блок с subject убран. При необходимости можно добавить
+        # нейтральную формулировку вроде "на поставку продукции".
 
-        if subject:
-            y -= 8 * mm
-            c.setFont("Arial", 10)
-            c.drawString(left_x, y, subject)
+        items = deal.get("items", [])
 
         # ----------------------------------------
         # Таблица товаров в стиле примера
@@ -308,16 +303,8 @@ class PdfService:
         c.drawString(left_x + 40 * mm, footer_y, 'ТОО «ТПГ «Титан»')
         c.drawString(left_x + 95 * mm, footer_y, "Бухановский Е.С.")
 
-        # Блок контактной информации менеджера (если передана)
-        manager_name = deal.get("manager_name") or ""
-        manager_phone = deal.get("manager_phone") or ""
-        if manager_name or manager_phone:
-            footer_y -= 8 * mm
-            c.setFont("Arial", 9)
-            text = "Менеджер: " + manager_name
-            if manager_phone:
-                text += f", тел.: {manager_phone}"
-            c.drawString(left_x, footer_y, text)
+        # Имя / телефон менеджера по требованию заказчика временно не выводим,
+        # чтобы КП было более универсальным и не зависело от конкретного сотрудника.
 
         c.save()
         return path
