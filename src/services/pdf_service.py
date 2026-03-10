@@ -38,42 +38,11 @@ class PdfService:
         top_margin = 20 * mm
         top_y_for_header = height - top_margin
 
-        logo_path = MEDIA_DIR / LOGO_FILENAME
-        if logo_path.exists():
-            # Высота логотипа на странице (уменьшена в 1.5 раза: было 22mm, стало ~14.67mm)
-            logo_height = 22 * mm / 1.5
-            logo = ImageReader(str(logo_path))
-            img_width, img_height = logo.getSize()
-            aspect = img_width / float(img_height or 1)
-            logo_width = logo_height * aspect
-
-            # Координаты логотипа: по центру страницы
-            logo_x = (width - logo_width) / 2
-            logo_y = height - top_margin - logo_height
-
-            c.drawImage(
-                logo,
-                logo_x,
-                logo_y,
-                width=logo_width,
-                height=logo_height,
-                preserveAspectRatio=True,
-                mask="auto",
-            )
-
-            # Центр логотипа по вертикали
-            logo_center_y = logo_y + logo_height / 2
-
-            # Текстовые блоки (слева и справа) выравниваем по высоте середины логотипа
-            # Маленький сдвиг вверх, чтобы визуально смотрелось аккуратно
-            top_y_for_header = logo_center_y + 1 * mm
-
         # ----------------------------------------
         # Шапка компании (контактные данные), как в примере КП
         # ----------------------------------------
         c.setFont("Arial", 9)
-        top_y = top_y_for_header
-
+        
         # Левый блок (казахский адрес)
         left_header_lines = [
             "Қазақстан Республикасы",
@@ -96,18 +65,66 @@ class PdfService:
             "www.tpgt.kz",
         ]
 
+        # Определяем высоту строки "Дінмұхамед Қонаев к-сі 33, 1003 кеңсе" (3-я строка, индекс 2)
+        # Сначала задаём начальную позицию текста (примерно)
+        line_spacing = 4.0 * mm
+        target_line_index = 2  # Индекс строки "Дінмұхамед Қонаев к-сі 33, 1003 кеңсе"
+        
+        # Предварительная позиция для текста (будет скорректирована после расчёта логотипа)
+        initial_text_y = height - top_margin - 15 * mm
+        
+        logo_path = MEDIA_DIR / LOGO_FILENAME
+        if logo_path.exists():
+            # Высота логотипа на странице (уменьшена в 1.5 раза: было 22mm, стало ~14.67mm)
+            logo_height = 22 * mm / 1.5
+            logo = ImageReader(str(logo_path))
+            img_width, img_height = logo.getSize()
+            aspect = img_width / float(img_height or 1)
+            logo_width = logo_height * aspect
+
+            # Вычисляем, где должна быть строка "Дінмұхамед Қонаев к-сі 33, 1003 кеңсе"
+            # Если top_y - позиция первой строки, то 3-я строка будет на top_y - 2 * line_spacing
+            # Центр логотипа должен совпадать с этой высотой
+            target_line_y = initial_text_y - target_line_index * line_spacing
+            
+            # Центр логотипа должен быть на уровне target_line_y
+            logo_center_y = target_line_y
+            logo_y = logo_center_y - logo_height / 2
+
+            # Координаты логотипа: по центру страницы по горизонтали
+            logo_x = (width - logo_width) / 2
+
+            c.drawImage(
+                logo,
+                logo_x,
+                logo_y,
+                width=logo_width,
+                height=logo_height,
+                preserveAspectRatio=True,
+                mask="auto",
+            )
+
+            # Теперь вычисляем top_y для текста так, чтобы 3-я строка была на уровне центра логотипа
+            # target_line_y = top_y - target_line_index * line_spacing
+            # logo_center_y = target_line_y
+            # Значит: top_y = logo_center_y + target_line_index * line_spacing
+            top_y = logo_center_y + target_line_index * line_spacing
+        else:
+            # Если логотипа нет, используем стандартную позицию
+            top_y = initial_text_y
+
         # Левый столбец
         y_left = top_y
         for line in left_header_lines:
             c.drawString(left_x, y_left, line)
-            y_left -= 4.0 * mm
+            y_left -= line_spacing
 
         # Правый столбец
         right_x = width - left_x
         y_right = top_y
         for line in right_header_lines:
             c.drawRightString(right_x, y_right, line)
-            y_right -= 4.0 * mm
+            y_right -= line_spacing
 
         # Горизонтальная линия под шапкой
         y_after_header = min(y_left, y_right) - 3 * mm
