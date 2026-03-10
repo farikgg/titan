@@ -201,11 +201,11 @@ async def telegram_webhook(update: dict):
                         offer.id,
                         assigned_by_id=user.bitrix_user_id,
                     )
-                await session.commit()
+                    await session.commit()
 
-                return await tg.edit_message(
-                    chat_id,
-                    message_id,
+                    return await tg.edit_message(
+                        chat_id,
+                        message_id,
                         f"🏢 Сделка создана в воронке Гидротех\n"
                         f"ID: {deal_id}\n"
                         f"Стадия: Подготовка КП",
