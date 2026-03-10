@@ -270,18 +270,16 @@ class PdfService:
         footer_y = table_y - 15 * mm
         c.setFont("Arial", 9)
 
-        # Динамические условия с дефолтами
-        payment_terms = deal.get(
-            "payment_terms",
-            "Условия оплаты: постоплата 30 дней после отгрузки продукции",
+        # Динамические условия с дефолтами.
+        # Важно: deal может содержать None, поэтому используем "or" для подстановки строки.
+        payment_terms = deal.get("payment_terms") or (
+            "Условия оплаты: постоплата 30 дней после отгрузки продукции"
         )
-        delivery_terms = deal.get(
-            "delivery_terms",
-            "Условия поставки: DDP склад Покупателя",
+        delivery_terms = deal.get("delivery_terms") or (
+            "Условия поставки: DDP склад Покупателя"
         )
-        warranty_terms = deal.get(
-            "warranty_terms",
-            "Гарантийный срок: 12 месяцев (при надлежащих условиях хранения)",
+        warranty_terms = deal.get("warranty_terms") or (
+            "Гарантийный срок: 12 месяцев (при надлежащих условиях хранения)"
         )
 
         conditions = [
@@ -291,7 +289,11 @@ class PdfService:
         ]
 
         for line in conditions:
-            c.drawString(left_x, footer_y, line)
+            # На всякий случай защищаемся от нестроковых значений / None
+            text = str(line) if line is not None else ""
+            if not text:
+                continue
+            c.drawString(left_x, footer_y, text)
             footer_y -= 5 * mm
 
         # ----------------------------------------
