@@ -325,11 +325,17 @@ async def _generate_offer_pdf(offer_id: int, chat_id: int):
                     # Телефон менеджера пока не храним — оставляем пустым,
                     # но поле предусмотрено в PDF
 
+            # Собираем данные для PDF, включая динамические условия КП
             pdf_path = pdf_service.generate_offer(
                 deal={
                     "id": offer.id,
                     "title": f"КП #{offer.id}",
                     "currency": offer.currency,
+                    # Динамические текстовые поля условий
+                    "payment_terms": getattr(offer, "payment_terms", None),
+                    "delivery_terms": getattr(offer, "delivery_terms", None),
+                    "warranty_terms": getattr(offer, "warranty_terms", None),
+                    # Информация о менеджере пока не выводится, но оставлена для совместимости
                     "manager_name": manager_name,
                     "manager_phone": manager_phone,
                     "items": [
