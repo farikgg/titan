@@ -447,6 +447,42 @@ class BitrixService:
     #  Компании (клиенты)
     # ──────────────────────────────────────────────
 
+    async def get_company(self, company_id: int) -> Optional[Dict]:
+        """Получает компанию по ID из Bitrix24."""
+        from anyio import to_thread
+
+        try:
+            result = await to_thread.run_sync(
+                self.bx.call,
+                "crm.company.get",
+                {"id": company_id},
+            )
+            
+            # Обработка ответа аналогично get_deal
+            if isinstance(result, dict):
+                if "result" in result:
+                    inner_result = result["result"]
+                    if isinstance(inner_result, dict):
+                        result = inner_result
+                    elif isinstance(inner_result, list):
+                        result = inner_result[0] if inner_result else None
+                elif "ID" in result:
+                    pass  # result уже правильный
+                elif len(result) == 1:
+                    only_value = next(iter(result.values()))
+                    if isinstance(only_value, dict) and "ID" in only_value:
+                        result = only_value
+            
+            if isinstance(result, dict) and "ID" in result:
+                logger.info("Bitrix: получена компания id=%s", company_id)
+                return result
+            else:
+                logger.warning("Bitrix: компания %s не найдена или неверный формат ответа", company_id)
+                return None
+        except Exception:
+            logger.exception("Bitrix: ошибка получения компании %s", company_id)
+            return None
+
     async def search_companies(self, query: str, limit: int = 20) -> List[Dict]:
         """
         Поиск компаний в Bitrix24 по названию.

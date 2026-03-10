@@ -278,15 +278,43 @@ class DealService:
             source=supplier,
         )
 
+        # Получаем название компании (клиента), если есть COMPANY_ID
+        company_name = None
+        company_id = deal.get("COMPANY_ID")
+        if company_id:
+            try:
+                company = await self.bitrix.get_company(company_id)
+                if company and isinstance(company, dict):
+                    company_name = company.get("TITLE")
+            except Exception:
+                logger.warning("DealService: не удалось получить компанию %s для сделки %s", company_id, deal_id)
+
+        # Маппинг стадий в понятные названия
+        stage_id = deal.get("STAGE_ID", "")
+        stage_name_map = {
+            BITRIX_STAGES.NEW: "Интерес или ТКП",
+            BITRIX_STAGES.FINAL_INVOICE: "Договор заключен. В работе",
+            BITRIX_STAGES.EXECUTING: "АВР и Накладная подписаны",
+            BITRIX_STAGES.WON: "Сделка успешна",
+            BITRIX_STAGES.LOSE: "Нет финансирования",
+            BITRIX_STAGES.APOLOGY: "Анализ причины провала",
+            BITRIX_STAGES.LOSE_REASON_COMPETITOR: "Конкуренты",
+        }
+        stage_name = stage_name_map.get(stage_id, stage_id)
+
         return {
             "deal": {
                 "id": int(deal["ID"]),
-                "title": deal["TITLE"],
-                "stage_id": deal["STAGE_ID"],
-                "category_id": deal["CATEGORY_ID"],
-                "currency": deal["CURRENCY_ID"],
-                "opportunity": deal["OPPORTUNITY"],
-                "assigned_by_id": deal["ASSIGNED_BY_ID"],
+                "title": deal.get("TITLE", ""),
+                "deal_title": deal.get("TITLE", ""),  # Отдельное поле для фронта
+                "stage_id": stage_id,
+                "stage_name": stage_name,  # Понятное название стадии
+                "category_id": deal.get("CATEGORY_ID"),
+                "currency": deal.get("CURRENCY_ID", "KZT"),
+                "opportunity": float(deal.get("OPPORTUNITY", 0)),
+                "assigned_by_id": deal.get("ASSIGNED_BY_ID"),
+                "company_id": company_id,
+                "company_name": company_name,  # Название компании (клиента)
             },
             "products": valid_products,
             "resolved_prices": resolved_prices,
