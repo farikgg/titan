@@ -42,8 +42,8 @@ async def remove_item(
 ):
     service = OfferService(db)
     try:
-    await service.remove_item(offer_id, sku)
-    return {"status": "removed"}
+        await service.remove_item(offer_id, sku)
+        return {"status": "removed"}
     except ValueError as e:
         error_msg = str(e)
         if "not found" in error_msg.lower():
