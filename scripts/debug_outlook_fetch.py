@@ -6,7 +6,9 @@ from src.app.config import settings
 
 async def main():
     auth = GraphAuth()
-    client = OutlookClient(auth, mailbox=settings.EMAIL_USER)
+    mailbox = settings.EMAIL_USER or "testAI@tpgt-titan.com"
+    folder_name = settings.FUCHS_FOLDER or "Inbox"
+    client = OutlookClient(auth, mailbox=mailbox, folder_name=folder_name)
 
     messages = await client.fetch_last_messages(limit=3)
 

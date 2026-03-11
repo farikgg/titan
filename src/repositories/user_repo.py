@@ -62,6 +62,13 @@ class UserRepository:
         )
         return result.scalar_one_or_none()
 
+    async def get_by_bitrix_user_id(self, bitrix_user_id: int):
+        """Находит пользователя по Bitrix user ID"""
+        result = await self.session.execute(
+            select(UserModel).where(UserModel.bitrix_user_id == bitrix_user_id)
+        )
+        return result.scalar_one_or_none()
+
     @staticmethod
     async def create(tg_id: int, username: str):
         async with async_session() as session:

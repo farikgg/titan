@@ -76,6 +76,27 @@ async def sync_now(
     return {"task_id": task.id, "status": "queued"}
 
 
+@router.post("/requests", responses=dict())
+async def sync_requests(
+        _: bool = Depends(verify_user_or_telegram),
+):
+    """
+    Запускает парсинг писем из папки Requests (requests@...).
+    Создаёт сделки в Bitrix и корзины (Offer) для них.
+    
+    Поддерживает два способа авторизации:
+    1. Через Telegram (X-Telegram-Init-Data header) - для фронта
+    2. Через токен (token header) - для админов
+    """
+    # Пытаемся взять замок на процесс парсинга Requests
+    if not await lock_service.acquire_lock("requests_sync", expire=600):
+        raise HTTPException(status_code=429, detail="Парсинг requests уже запущен. Подождите 10 минут.")
+
+    from src.worker.tasks import parse_from_requests
+    task = parse_from_requests.delay()
+    return {"task_id": task.id, "status": "queued", "message": "Парсинг requests запущен"}
+
+
 @router.get("/status/{task_id}", responses=dict())
 async def get_status(
         task_id: Annotated[str,

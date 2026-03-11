@@ -13,6 +13,7 @@ from src.db.initialize import async_session
 from src.services.lock_service import lock_service
 from src.app.config import settings
 from src.services.fuchs_pipeline import process_fuchs_message
+from src.services.requests_pipeline import process_requests_message
 from src.integrations.azure.outlook_client import OutlookClient
 from src.core.graph_auth import GraphAuth
 
@@ -43,7 +44,10 @@ def parse_from_fuchs(self):
 
         try:
             auth = GraphAuth()
-            client = OutlookClient(auth)
+            # Используем папку FUCHS из настроек (по умолчанию "Inbox")
+            folder_name = settings.FUCHS_FOLDER or "Inbox"
+            mailbox = settings.EMAIL_USER or "testAI@tpgt-titan.com"
+            client = OutlookClient(auth, mailbox=mailbox, folder_name=folder_name)
 
             messages = await client.fetch_last_messages(limit=50)
 
@@ -122,6 +126,150 @@ def ai_process(self, msg_dict):
 
         try:
             result = await process_fuchs_message(msg_dict)
+
+            async with async_session() as session:
+                processing = await session.scalar(
+                    select(EmailProcessing).where(
+                        EmailProcessing.message_id == message_id
+                    )
+                )
+                if processing:
+                    processing.status = "DONE"
+                    await session.commit()
+
+            return result
+
+        except Exception as e:
+            async with async_session() as session:
+                processing = await session.scalar(
+                    select(EmailProcessing).where(
+                        EmailProcessing.message_id == message_id
+                    )
+                )
+                if processing:
+                    processing.status = "FAILED"
+                    await session.commit()
+            raise e
+
+    return run_async(_inner())
+
+
+@app.task(
+    bind=True,
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    max_retries=5,
+    name="src.worker.tasks.parse_from_requests",
+)
+def parse_from_requests(self):
+    """
+    Периодическая задача для чтения писем из requests@... ящика.
+    Создаёт сделки в Bitrix и корзины (Offer) для них.
+    """
+    async def _inner():
+        lock_key = "requests:parse"
+
+        acquired = await lock_service.acquire_lock(lock_key, 600)
+        if not acquired:
+            return
+
+        try:
+            auth = GraphAuth()
+            # Используем папку Requests из настроек (будет создана автоматически если не существует)
+            folder_name = settings.REQUESTS_FOLDER or "Requests"
+            mailbox = settings.EMAIL_USER or "testAI@tpgt-titan.com"
+            client = OutlookClient(auth, mailbox=mailbox, folder_name=folder_name)
+
+            messages = await client.fetch_last_messages(limit=50)
+
+            async with async_session() as session:
+                for msg in messages:
+                    message_id = msg.get("id")
+                    if not message_id:
+                        continue
+
+                    try:
+                        session.add(
+                            EmailProcessing(
+                                message_id=message_id,
+                                status="NEW"
+                            )
+                        )
+                        await session.commit()
+
+                    except IntegrityError:
+                        await session.rollback()
+                        continue
+
+                    attachments = OutlookClient.parse_attachments(
+                        msg.get("attachments")
+                    )
+
+                    # Извлекаем данные письма
+                    sender_info = msg.get("sender", {}).get("emailAddress", {})
+                    sender_email = sender_info.get("address", "")
+
+                    requests_process.delay({
+                        "message_ids": message_id,
+                        "subject": msg.get("subject", ""),
+                        "body": msg.get("body", {}).get("content", ""),
+                        "bodyPreview": msg.get("bodyPreview", ""),
+                        "from": sender_email,
+                        "sender": {
+                            "emailAddress": sender_info,
+                        },
+                        "attachments": attachments,
+                    })
+        finally:
+            await lock_service.release_lock(lock_key)
+
+    return run_async(_inner())
+
+
+@app.task(
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    bind=True,
+    time_limit=600,
+    soft_time_limit=480,
+    rate_limit="5/m",
+    name="src.worker.tasks.requests_process",
+    retry_jitter=True,
+    retry_kwargs={"max_retries": 5},
+    retry_exceptions=(TimeoutError, ConnectionError),
+)
+def requests_process(self, msg_dict):
+    """
+    Обрабатывает одно письмо из requests@... ящика.
+    Создаёт сделку в Bitrix и корзину (Offer) для неё.
+    """
+    async def _inner():
+        message_id = msg_dict.get("message_ids")
+
+        if not message_id:
+            return "No message-id"
+
+        async with async_session() as session:
+            processing = await session.scalar(
+                select(EmailProcessing).where(
+                    EmailProcessing.message_id == message_id
+                )
+            )
+
+            if not processing:
+                return "Not registered"
+
+            if processing.status == "DONE":
+                return "Already done"
+
+            if processing.status == "PROCESSING":
+                return "Already processing"
+
+            processing.status = "PROCESSING"
+            await session.commit()
+
+        try:
+            result = await process_requests_message(msg_dict)
 
             async with async_session() as session:
                 processing = await session.scalar(

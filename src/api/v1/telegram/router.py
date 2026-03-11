@@ -14,7 +14,7 @@ from src.core.enums import Role
 from src.app.config import BITRIX_STAGES
 
 from src.db.initialize import async_session
-from src.worker.tasks import parse_from_fuchs, sync_skf_prices_task
+from src.worker.tasks import parse_from_fuchs, parse_from_requests, sync_skf_prices_task
 
 router = APIRouter(prefix="/telegram", tags=["telegram"])
 
@@ -114,6 +114,21 @@ async def telegram_webhook(update: dict):
                     },
                 )
 
+            if data == "sync:requests":
+                if user.role not in (Role.admin.value, Role.head_manager.value):
+                    return await tg.edit_message(chat_id, message_id, "Нет доступа", tg.back_button())
+
+                parse_from_requests.delay()
+                return await tg.edit_message(
+                    chat_id,
+                    message_id,
+                    "📧 Парсинг Requests запущен\nСоздание сделок и корзин...",
+                    {
+                        "inline_keyboard": [
+                            [{"text": "⬅ Назад", "callback_data": "menu:main"}]
+                        ]
+                    },
+                )
 
             if data == "sync:skf":
                 if user.role not in (Role.admin.value, Role.head_manager.value):
@@ -346,6 +361,9 @@ async def telegram_webhook(update: dict):
         if user.role in (Role.admin.value, Role.head_manager.value):
             keyboard.append(
                 [{"text": "📬 Синхронизация FUCHS", "callback_data": "sync:fuchs"}]
+            )
+            keyboard.append(
+                [{"text": "📧 Парсинг Requests", "callback_data": "sync:requests"}]
             )
             keyboard.append(
                 [{"text": "🔄 Синхронизация SKF", "callback_data": "sync:skf"}]

@@ -36,12 +36,18 @@ app.conf.beat_schedule = {
         'task': 'src.worker.tasks.parse_from_fuchs',
         'schedule': crontab(day_of_month=1, month_of_year='*/3', hour=3, minute=0), # каждый 3 месяц 1 числа в 3 часа ночи запустает парсинг таск
     },
+    'parser_requests_every_hour': {
+        'task': 'src.worker.tasks.parse_from_requests',
+        'schedule': crontab(minute=0),  # Каждый час в 00 минут (например, 10:00, 11:00, 12:00...)
+    },
 }
 
 app.conf.task_routes = {
     'src.worker.tasks.ai_process': {'queue': 'heavy'},
     'src.worker.tasks.generate_pdf_task': {'queue': 'heavy'},
     'src.worker.tasks.parse_from_fuchs': {'queue': 'default'},
+    'src.worker.tasks.parse_from_requests': {'queue': 'default'},
+    'src.worker.tasks.requests_process': {'queue': 'default'},
     'src.worker.tasks.sync_skf_prices': {'queue': 'default'},
     'src.worker.tasks.sync_skf_single': {'queue': 'default'},
     'src.worker.tasks.process_deal_update': {'queue': 'default'},

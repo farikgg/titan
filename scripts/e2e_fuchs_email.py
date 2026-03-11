@@ -9,7 +9,9 @@ from src.app.config import settings
 
 async def main():
     auth = GraphAuth()
-    outlook = OutlookClient(auth, mailbox=settings.EMAIL_USER)
+    mailbox = settings.EMAIL_USER or "testAI@tpgt-titan.com"
+    folder_name = settings.FUCHS_FOLDER or "Inbox"
+    outlook = OutlookClient(auth, mailbox=mailbox, folder_name=folder_name)
     parser = FuchsAIParser()
     price_service = PriceService()
 

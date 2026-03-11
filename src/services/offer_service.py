@@ -149,6 +149,145 @@ class OfferService:
         await self.db.commit()
 
     # --------------------------------------------------
+    # Create offer for deal (from email parser)
+    # --------------------------------------------------
+
+    async def create_offer_for_deal(
+        self,
+        deal_id: int,
+        bitrix_user_id: int,
+        items: list[dict],
+        currency: str | None = None,
+    ) -> OfferModel:
+        """
+        Создаёт корзину (Offer) для сделки из парсера писем.
+        
+        Args:
+            deal_id: ID сделки в Bitrix24
+            bitrix_user_id: Bitrix user ID ответственного менеджера
+            items: список товаров [{"sku": "...", "name": "...", "price": 100.0, "quantity": 1, "found": True/False}]
+            currency: валюта (если не указана, берётся из первого товара)
+        
+        Returns:
+            OfferModel: созданная корзина
+        """
+        from src.repositories.user_repo import UserRepository
+        
+        # Находим пользователя по bitrix_user_id
+        user_repo = UserRepository(self.db)
+        user = await user_repo.get_by_bitrix_user_id(bitrix_user_id)
+        
+        if not user:
+            # Если пользователь не найден, используем дефолтного (DEFAULT_ASSIGNED_BY_ID = 109)
+            # Ищем системного пользователя или создаём заглушку
+            logger.warning(
+                "User with bitrix_user_id=%s not found, using default user_id=1",
+                bitrix_user_id
+            )
+            user_id = 1  # Дефолтный системный пользователь
+        else:
+            user_id = user.id
+
+        # Проверяем, нет ли уже активной корзины для этой сделки
+        existing = await self.db.scalar(
+            select(OfferModel).where(
+                OfferModel.bitrix_deal_id == str(deal_id),
+                OfferModel.status == OfferStatus.DRAFT,
+            )
+        )
+
+        if existing:
+            logger.info(
+                "Active offer already exists for deal_id=%s, offer_id=%s",
+                deal_id,
+                existing.id
+            )
+            return existing
+
+        # Определяем валюту
+        if not currency and items:
+            # Пробуем взять из первого товара или дефолт
+            currency = items[0].get("currency", "KZT")
+        currency = currency or "KZT"
+
+        # Создаём корзину
+        offer = OfferModel(
+            user_id=user_id,
+            status=OfferStatus.DRAFT,
+            total=Decimal("0.00"),
+            currency=currency,
+            bitrix_deal_id=str(deal_id),
+        )
+        self.db.add(offer)
+        await self.db.flush()
+        await self.db.refresh(offer)
+
+        # Добавляем товары в корзину
+        from src.db.models.price_model import PriceModel
+        
+        for item_data in items:
+            sku = item_data.get("sku") or item_data.get("art", "")
+            name = item_data.get("name", "Товар не найден")
+            price = Decimal(str(item_data.get("price", 0)))
+            quantity = int(item_data.get("quantity", 1))
+            found = item_data.get("found", False)  # True если товар найден в прайсах
+
+            # Если товар не найден, всё равно добавляем в корзину с пометкой
+            if not found:
+                # Добавляем как "не найден" - без привязки к PriceModel
+                item = OfferItemModel(
+                    offer_id=offer.id,
+                    sku=sku or f"NOT_FOUND_{len(items)}",
+                    name=f"[НЕ НАЙДЕН] {name}",
+                    price=price,
+                    quantity=quantity,
+                    total=price * quantity,
+                )
+                self.db.add(item)
+            else:
+                # Ищем товар в прайсах
+                price_obj = await self.db.scalar(
+                    select(PriceModel).where(PriceModel.art == sku)
+                )
+
+                if price_obj:
+                    # Товар найден в прайсах - добавляем нормально
+                    item = OfferItemModel(
+                        offer_id=offer.id,
+                        sku=sku,
+                        name=price_obj.name,
+                        price=price_obj.price,
+                        quantity=quantity,
+                        total=price_obj.price * quantity,
+                    )
+                    self.db.add(item)
+                else:
+                    # Товар был помечен как найден, но в БД его нет - добавляем как "не найден"
+                    item = OfferItemModel(
+                        offer_id=offer.id,
+                        sku=sku or f"NOT_FOUND_{len(items)}",
+                        name=f"[НЕ НАЙДЕН] {name}",
+                        price=price,
+                        quantity=quantity,
+                        total=price * quantity,
+                    )
+                    self.db.add(item)
+
+        # Пересчитываем итог
+        await self.recalc_total(offer.id)
+
+        await self._log(
+            actor_type="system",
+            action="create_offer_for_deal",
+            payload={"offer_id": offer.id, "deal_id": deal_id, "items_count": len(items)},
+        )
+
+        await self.db.commit()
+        await self.db.refresh(offer)
+
+        return offer
+
+    # --------------------------------------------------
     # Clear
     # --------------------------------------------------
 
