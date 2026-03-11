@@ -3,8 +3,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Annotated
 
 from src.db.initialize import get_db
+from src.db.models.user_model import UserModel
 from src.services.offer_service import OfferService
-from src.core.auth import get_tg_user
+from src.core.auth import get_tg_user, get_tg_user_or_admin
 from src.worker.tasks import generate_offer_pdf_task
 from src.app.config import settings
 
@@ -34,7 +35,7 @@ async def verify_user_or_admin_token(
 @router.post("/draft")
 async def create_draft(
     db: AsyncSession = Depends(get_db),
-    _: bool = Depends(verify_user_or_admin_token),
+    user: UserModel = Depends(get_tg_user_or_admin),
 ):
     """
     Создаёт (или возвращает существующий) черновик КП.
@@ -49,7 +50,7 @@ async def create_draft(
     # Для admin token у нас нет Telegram-пользователя, поэтому создаём
     # черновик на условного системного user_id=1.
     # В TMA по-прежнему используется get_or_create_draft по реальному user.id.
-    offer = await service.get_or_create_draft(user_id=1)
+    offer = await service.get_or_create_draft(user.id)
     await db.commit()
     return {"offer_id": offer.id}
 
@@ -59,7 +60,7 @@ async def add_item(
     offer_id: int,
     sku: str,
     db: AsyncSession = Depends(get_db),
-    _: bool = Depends(verify_user_or_admin_token),
+    user: UserModel = Depends(get_tg_user_or_admin),
 ):
     service = OfferService(db)
     await service.add_item(offer_id, sku)
@@ -72,7 +73,7 @@ async def remove_item(
     offer_id: int,
     sku: str,
     db: AsyncSession = Depends(get_db),
-    user=Depends(get_tg_user),
+    user=Depends(get_tg_user_or_admin),
 ):
     service = OfferService(db)
     try:
@@ -99,7 +100,7 @@ async def get_offer(
 async def clear_offer(
     offer_id: int,
     db: AsyncSession = Depends(get_db),
-    _: bool = Depends(verify_user_or_admin_token),
+    user: UserModel = Depends(get_tg_user_or_admin),
 ):
     service = OfferService(db)
     await service.clear_offer(offer_id)
@@ -145,7 +146,7 @@ class UpdateOfferTermsRequest(BaseModel):
 async def convert(
     offer_id: int,
     db: AsyncSession = Depends(get_db),
-    user=Depends(get_tg_user),
+    user=Depends(get_tg_user_or_admin),
     body: OfferConvertRequest | None = None,
 ):
     service = OfferService(db)
@@ -208,7 +209,7 @@ async def update_terms(
 async def generate_pdf(
     offer_id: int,
     db: AsyncSession = Depends(get_db),
-    user=Depends(get_tg_user),
+    user=Depends(get_tg_user_or_admin),
 ):
     """
     Запускает генерацию PDF (та же логика, что в боте).

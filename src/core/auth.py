@@ -3,6 +3,7 @@ from urllib.parse import unquote
 
 from fastapi import Header, HTTPException, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
+from typing import Annotated
 
 from src.app.config import settings
 from src.db.initialize import get_db
@@ -195,6 +196,28 @@ async def get_tg_user(
 
     return user
 
+
+async def get_tg_user_or_admin(
+    x_telegram_init_data: Annotated[str | None, Header(alias="X-Telegram-Init-Data")] = None,
+    token: Annotated[str | None, Header()] = None,
+    db: AsyncSession = Depends(get_db),
+) -> UserModel:
+    """
+    1) Если есть X-Telegram-Init-Data -> ведём себя как get_tg_user.
+    2) Если есть корректный ADMIN_SECRET_TOKEN -> возвращаем системного пользователя (user_id=1).
+    """
+    if x_telegram_init_data:
+        # просто вызываем существующую логику
+        return await get_tg_user(x_telegram_init_data=x_telegram_init_data, db=db)
+
+    if token and token == settings.ADMIN_SECRET_TOKEN:
+        repo = UserRepository(db)
+        user = await repo.get_by_id(1)  # системный пользователь
+        if not user:
+            raise HTTPException(status_code=403, detail="System user not found")
+        return user
+
+    raise HTTPException(status_code=401, detail="Need Telegram init data or admin token")
 
 def require_admin(user: UserModel = Depends(get_tg_user)):
     if user.role != Role.admin.value:

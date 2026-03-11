@@ -6,6 +6,9 @@ from src.db.models.offer_model import OfferModel, OfferStatus
 from src.db.models.offer_item_model import OfferItemModel
 from src.db.models.audit_log import AuditLog
 from src.db.models.price_model import PriceModel, Source
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class OfferService:
