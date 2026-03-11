@@ -34,11 +34,22 @@ async def verify_user_or_admin_token(
 @router.post("/draft")
 async def create_draft(
     db: AsyncSession = Depends(get_db),
-    user=Depends(get_tg_user),
+    _: bool = Depends(verify_user_or_admin_token),
 ):
+    """
+    Создаёт (или возвращает существующий) черновик КП.
+
+    Авторизация:
+      - через X-Telegram-Init-Data (TMA), или
+      - через admin token в заголовке `token`.
+
+    В варианте с admin token черновик создаётся на «системного» пользователя.
+    """
     service = OfferService(db)
-    # Используем get_or_create_draft, чтобы работало даже в старых версиях сервиса
-    offer = await service.get_or_create_draft(user.id)
+    # Для admin token у нас нет Telegram-пользователя, поэтому создаём
+    # черновик на условного системного user_id=1.
+    # В TMA по-прежнему используется get_or_create_draft по реальному user.id.
+    offer = await service.get_or_create_draft(user_id=1)
     await db.commit()
     return {"offer_id": offer.id}
 
@@ -48,6 +59,7 @@ async def add_item(
     offer_id: int,
     sku: str,
     db: AsyncSession = Depends(get_db),
+    _: bool = Depends(verify_user_or_admin_token),
 ):
     service = OfferService(db)
     await service.add_item(offer_id, sku)
@@ -77,6 +89,7 @@ async def remove_item(
 async def get_offer(
     offer_id: int,
     db: AsyncSession = Depends(get_db),
+    _: bool = Depends(verify_user_or_admin_token),
 ):
     service = OfferService(db)
     return await service.get_offer_with_items(offer_id)
@@ -86,6 +99,7 @@ async def get_offer(
 async def clear_offer(
     offer_id: int,
     db: AsyncSession = Depends(get_db),
+    _: bool = Depends(verify_user_or_admin_token),
 ):
     service = OfferService(db)
     await service.clear_offer(offer_id)
