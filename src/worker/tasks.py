@@ -418,7 +418,7 @@ def process_deal_update(deal_id: int):
     run_async(_inner())
 
 
-async def _generate_offer_pdf(offer_id: int, chat_id: int):
+async def _generate_offer_pdf(offer_id: int, chat_id: int | None):
 
     from src.services.pdf_service import PdfService
     from src.db.models.offer_model import OfferModel
@@ -437,23 +437,28 @@ async def _generate_offer_pdf(offer_id: int, chat_id: int):
         offer = await session.get(OfferModel, offer_id)
 
         if not offer:
-            await tg.send_message(chat_id, "❌ Offer не найден")
+            # Если нет chat_id (админский вызов) — просто выходим тихо
+            if chat_id:
+                await tg.send_message(chat_id, "❌ Offer не найден")
             return
 
         # БЛОКИРОВКА ОТ ДУБЛЕЙ
         if offer.is_generating:
-            await tg.send_message(chat_id, "⏳ PDF уже генерируется...")
+            if chat_id:
+                await tg.send_message(chat_id, "⏳ PDF уже генерируется...")
             return
 
         offer.is_generating = True
         await session.commit()
 
-    progress = await tg.send_message(chat_id, "🧾 Генерирую PDF...")
-    if not progress or not progress.get("result"):
-        logger.error("Не удалось получить message_id %s", progress)
-        return
-
-    message_id = progress["result"]["message_id"]
+    progress = None
+    message_id = None
+    if chat_id:
+        progress = await tg.send_message(chat_id, "🧾 Генерирую PDF...")
+        if not progress or not progress.get("result"):
+            logger.error("Не удалось получить message_id %s", progress)
+            return
+        message_id = progress["result"]["message_id"]
 
     try:
 
@@ -542,17 +547,19 @@ async def _generate_offer_pdf(offer_id: int, chat_id: int):
                         bitrix_deal_id,
                     )
 
-        await tg.edit_message(
-            chat_id,
-            message_id,
-            "✅ PDF готов"
-        )
+        # Если есть chat_id (вызов из Telegram) — шлём уведомление и документ.
+        if chat_id and message_id:
+            await tg.edit_message(
+                chat_id,
+                message_id,
+                "✅ PDF готов"
+            )
 
-        await tg.send_document(
-            chat_id,
-            Path(pdf_path),
-            caption=f"Коммерческое предложение #{offer_id}"
-        )
+            await tg.send_document(
+                chat_id,
+                Path(pdf_path),
+                caption=f"Коммерческое предложение #{offer_id}"
+            )
 
     except Exception as e:
 
@@ -561,11 +568,12 @@ async def _generate_offer_pdf(offer_id: int, chat_id: int):
             offer.is_generating = False
             await session.commit()
 
-        await tg.edit_message(
-            chat_id,
-            progress["result"]["message_id"],
-            "❌ Ошибка генерации"
-        )
+        if chat_id and progress and progress.get("result"):
+            await tg.edit_message(
+                chat_id,
+                progress["result"]["message_id"],
+                "❌ Ошибка генерации"
+            )
 
         raise
 
@@ -586,7 +594,7 @@ async def _generate_offer_pdf(offer_id: int, chat_id: int):
     soft_time_limit=480,
     name="src.worker.tasks.generate_pdf_task",
 )
-def generate_offer_pdf_task(self, offer_id: int, chat_id: int):
+def generate_offer_pdf_task(self, offer_id: int, chat_id: int | None = None):
     return run_async(_generate_offer_pdf(offer_id, chat_id))
 
 
