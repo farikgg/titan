@@ -3,7 +3,7 @@ from datetime import datetime
 from decimal import Decimal
 
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy import String, Numeric, Enum, ForeignKey, func
+from sqlalchemy import String, Numeric, Enum, ForeignKey, func, Text
 
 from src.db.initialize import Base
 
@@ -42,3 +42,8 @@ class OfferModel(Base):
         cascade="all, delete-orphan"
     )
     currency: Mapped[str | None] = mapped_column(String(3), nullable=True)
+
+    # Текстовые условия КП (могут быть NULL)
+    payment_terms: Mapped[str | None] = mapped_column(Text, nullable=True)
+    delivery_terms: Mapped[str | None] = mapped_column(Text, nullable=True)
+    warranty_terms: Mapped[str | None] = mapped_column(Text, nullable=True)
