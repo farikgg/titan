@@ -181,14 +181,23 @@ class PdfService:
         }
         currency_label = currency_names.get(currency_code, currency_code or "валюта")
 
+        # Флаг НДС: если включён, убираем подпись «без НДС» из заголовка
+        vat_enabled = bool(deal.get("vat_enabled"))
+        if vat_enabled:
+            price_header = f"Цена, {currency_label}"
+            total_header = f"Сумма, {currency_label}"
+        else:
+            price_header = f"Цена, {currency_label}\n(без НДС)"
+            total_header = f"Сумма, {currency_label}\n(без НДС)"
+
         table_data = [
             [
                 "№",
                 "Товары\n(работы/услуги)",
                 "Кол-во",
                 "Ед. изм.",
-                f"Цена, {currency_label}\n(без НДС)",
-                f"Сумма, {currency_label}\n(без НДС)",
+                price_header,
+                total_header,
                 "Срок\nпоставки",
             ]
         ]
@@ -301,9 +310,13 @@ class PdfService:
         # ----------------------------------------
         footer_y -= 10 * mm
         c.setFont("Arial", 10)
-        c.drawString(left_x, footer_y, "Директор")
-        c.drawString(left_x + 40 * mm, footer_y, 'ТОО «ТПГ «Титан»')
-        c.drawString(left_x + 95 * mm, footer_y, "Бухановский Е.С.")
+
+        # Левый блок: должность + организация
+        c.drawString(left_x, footer_y, "Директор ТОО «ТПГ «Титан»")
+
+        # Правый блок: ФИО директора, выровненное по правому краю
+        right_x = width - left_x
+        c.drawRightString(right_x, footer_y, "Бухановский Е.С.")
 
         # Имя / телефон менеджера по требованию заказчика временно не выводим,
         # чтобы КП было более универсальным и не зависело от конкретного сотрудника.
