@@ -1,12 +1,34 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request, Header
 from sqlalchemy.ext.asyncio import AsyncSession
+from typing import Annotated
 
 from src.db.initialize import get_db
 from src.services.offer_service import OfferService
 from src.core.auth import get_tg_user
 from src.worker.tasks import generate_offer_pdf_task
+from src.app.config import settings
 
 router = APIRouter(prefix="/offers", tags=["Offers"])
+
+
+async def verify_user_or_admin_token(
+    request: Request,
+    token: Annotated[str | None, Header()] = None,
+):
+    """
+    Пропускаем либо пользователя из Telegram (X-Telegram-Init-Data),
+    либо запрос с корректным ADMIN_SECRET_TOKEN в header `token`.
+    """
+    # Если пришёл initData от Telegram Mini App — считаем, что фронт авторизован.
+    x_telegram_init_data = request.headers.get("X-Telegram-Init-Data")
+    if x_telegram_init_data:
+        return True
+
+    # Иначе проверяем admin token
+    if token and token == settings.ADMIN_SECRET_TOKEN:
+        return True
+
+    raise HTTPException(status_code=401, detail="Unauthorized: need Telegram init data or valid admin token")
 
 
 @router.post("/draft")
@@ -137,7 +159,7 @@ async def update_terms(
     offer_id: int,
     body: UpdateOfferTermsRequest,
     db: AsyncSession = Depends(get_db),
-    user=Depends(get_tg_user),
+    _: bool = Depends(verify_user_or_admin_token),
 ):
     """
     Обновляет текстовые поля условий КП:
