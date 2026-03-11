@@ -354,6 +354,15 @@ class OfferService:
         payment_terms: str | None = None,
         delivery_terms: str | None = None,
         warranty_terms: str | None = None,
+        supplier_type: str | None = None,
+        fuchs_margin_pct: float | None = None,
+        fuchs_vat_enabled: bool | None = None,
+        fuchs_vat_pct: float | None = None,
+        skf_delivery_pct: float | None = None,
+        skf_duty_pct: float | None = None,
+        skf_margin_pct: float | None = None,
+        skf_vat_enabled: bool | None = None,
+        skf_vat_pct: float | None = None,
     ):
         """
         Обновляет текстовые поля условий для КП.
@@ -375,6 +384,87 @@ class OfferService:
             offer.warranty_terms = warranty_terms
             changed = True
 
+        # --------------------------------------------------
+        # Дополнительно: перерасчёт цен по формулам FUCHS / SKF
+        # --------------------------------------------------
+        if supplier_type:
+            # Нормализуем тип
+            supplier = supplier_type.lower()
+
+            # Загружаем все позиции оффера
+            result = await self.db.execute(
+                select(OfferItemModel).where(OfferItemModel.offer_id == offer_id)
+            )
+            items = result.scalars().all()
+
+            # Общие дефолты по НДС
+            vat_default = 16.0
+
+            if supplier == "fuchs":
+                margin = fuchs_margin_pct if fuchs_margin_pct is not None else 50.0
+                vat_enabled = bool(fuchs_vat_enabled) if fuchs_vat_enabled is not None else True
+                vat_pct_val = fuchs_vat_pct if fuchs_vat_pct is not None else vat_default
+                duty_pct_val = 5.0  # фикс
+                delivery_per_kg = 0.70
+
+                for item in items:
+                    # Ищем цену FUCHS по артикулу
+                    price_obj = await self.db.scalar(
+                        select(PriceModel).where(
+                            PriceModel.art == item.sku,
+                            PriceModel.source == Source.FUCHS,
+                        )
+                    )
+                    if not price_obj:
+                        continue
+
+                    purchase_price = float(price_obj.price)
+
+                    base = purchase_price + delivery_per_kg
+                    with_duty = base * (1 + duty_pct_val / 100.0)
+                    price_without_vat = with_duty * (1 + margin / 100.0)
+
+                    if vat_enabled:
+                        _ = price_without_vat * (1 + vat_pct_val / 100.0)
+
+                    item.price = Decimal(str(price_without_vat))
+                    item.total = item.price * item.quantity
+
+                await self.recalc_total(offer_id)
+                changed = True
+
+            elif supplier == "skf":
+                delivery_pct_val = skf_delivery_pct if skf_delivery_pct is not None else 10.0
+                duty_pct_val = skf_duty_pct if skf_duty_pct is not None else 5.0
+                margin = skf_margin_pct if skf_margin_pct is not None else 50.0
+                vat_enabled = bool(skf_vat_enabled) if skf_vat_enabled is not None else True
+                vat_pct_val = skf_vat_pct if skf_vat_pct is not None else vat_default
+
+                for item in items:
+                    price_obj = await self.db.scalar(
+                        select(PriceModel).where(
+                            PriceModel.art == item.sku,
+                            PriceModel.source == Source.SKF,
+                        )
+                    )
+                    if not price_obj:
+                        continue
+
+                    purchase_price = float(price_obj.price)
+
+                    base = purchase_price * (1 + delivery_pct_val / 100.0)
+                    with_duty = base * (1 + duty_pct_val / 100.0)
+                    price_without_vat = with_duty * (1 + margin / 100.0)
+
+                    if vat_enabled:
+                        _ = price_without_vat * (1 + vat_pct_val / 100.0)
+
+                    item.price = Decimal(str(price_without_vat))
+                    item.total = item.price * item.quantity
+
+                await self.recalc_total(offer_id)
+                changed = True
+
         if changed:
             await self._log(
                 actor_type="user",
@@ -384,6 +474,7 @@ class OfferService:
                     "payment_terms": payment_terms,
                     "delivery_terms": delivery_terms,
                     "warranty_terms": warranty_terms,
+                    "supplier_type": supplier_type,
                 },
             )
             await self.db.commit()

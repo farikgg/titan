@@ -84,6 +84,26 @@ class UpdateOfferTermsRequest(BaseModel):
     delivery_terms: str | None = None
     warranty_terms: str | None = None
 
+    # -----------------------------
+    # Параметры расчёта цен
+    # -----------------------------
+    # Тип поставщика для текущего КП:
+    #   - "fuchs" → формулы для масел/смазок
+    #   - "skf"   → формулы для оборудования SKF
+    supplier_type: str | None = None  # "fuchs" | "skf"
+
+    # FUCHS
+    fuchs_margin_pct: float | None = None
+    fuchs_vat_enabled: bool | None = None
+    fuchs_vat_pct: float | None = None
+
+    # SKF
+    skf_delivery_pct: float | None = None
+    skf_duty_pct: float | None = None
+    skf_margin_pct: float | None = None
+    skf_vat_enabled: bool | None = None
+    skf_vat_pct: float | None = None
+
 
 @router.post("/{offer_id}/convert")
 async def convert(
@@ -133,6 +153,15 @@ async def update_terms(
             payment_terms=body.payment_terms,
             delivery_terms=body.delivery_terms,
             warranty_terms=body.warranty_terms,
+            supplier_type=body.supplier_type,
+            fuchs_margin_pct=body.fuchs_margin_pct,
+            fuchs_vat_enabled=body.fuchs_vat_enabled,
+            fuchs_vat_pct=body.fuchs_vat_pct,
+            skf_delivery_pct=body.skf_delivery_pct,
+            skf_duty_pct=body.skf_duty_pct,
+            skf_margin_pct=body.skf_margin_pct,
+            skf_vat_enabled=body.skf_vat_enabled,
+            skf_vat_pct=body.skf_vat_pct,
         )
         return {"status": "updated"}
     except ValueError as e:
