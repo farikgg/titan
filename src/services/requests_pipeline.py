@@ -260,16 +260,23 @@ async def process_requests_message(msg_dict: dict) -> str:
         return "No data"
 
     # Конвертируем в словари для дальнейшей обработки
-    parsed_items = [
-        {
-            "art": getattr(item, "art", "") or "",
-            "name": getattr(item, "name", "") or "",
-            "price": float(getattr(item, "price", 0)) or 0,
-            "currency": getattr(item, "currency", "KZT") or "KZT",
-            "quantity": int(getattr(item, "quantity", 1)) or 1,
-        }
-        for item in items
-    ]
+    parsed_items = []
+    for item in items:
+        price_raw = getattr(item, "price", 0)
+        if price_raw is None:
+            price_val = 0.0
+        else:
+            price_val = float(price_raw)
+
+        parsed_items.append(
+            {
+                "art": getattr(item, "art", "") or "",
+                "name": getattr(item, "name", "") or "",
+                "price": price_val,
+                "currency": getattr(item, "currency", "KZT") or "KZT",
+                "quantity": int(getattr(item, "quantity", 1) or 1),
+            }
+        )
 
     # -------- 3. ИЗВЛЕЧЕНИЕ ДАННЫХ КЛИЕНТА (AI) --------
     client_info = await extract_client_info(subject, body, sender)
