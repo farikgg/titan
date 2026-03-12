@@ -262,11 +262,11 @@ async def process_requests_message(msg_dict: dict) -> str:
     # Конвертируем в словари для дальнейшей обработки
     parsed_items = [
         {
-            "art": item.art if hasattr(item, "art") else item.get("art", ""),
-            "name": item.name if hasattr(item, "name") else item.get("name", ""),
-            "price": float(item.price) if hasattr(item, "price") and item.price else item.get("price", 0),
-            "currency": item.currency if hasattr(item, "currency") else item.get("currency", "KZT"),
-            "quantity": int(item.quantity) if hasattr(item, "quantity") else int(item.get("quantity", 1)),
+            "art": getattr(item, "art", "") or "",
+            "name": getattr(item, "name", "") or "",
+            "price": float(getattr(item, "price", 0)) or 0,
+            "currency": getattr(item, "currency", "KZT") or "KZT",
+            "quantity": int(getattr(item, "quantity", 1)) or 1,
         }
         for item in items
     ]
