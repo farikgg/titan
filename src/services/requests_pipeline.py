@@ -298,7 +298,7 @@ async def process_requests_message(msg_dict: dict) -> str:
             subject=subject,
             sender=sender,
             assigned_by_id=DEFAULT_ASSIGNED_BY_ID,
-            parsed_items=[],  # Пока без товаров, добавим в корзину
+            parsed_items=parsed_items,
             message_id=message_id,
         )
 

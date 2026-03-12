@@ -248,7 +248,7 @@ class DealService:
                 deal,
             )
             return None
-        
+
         if "ID" not in deal:
             logger.error(
                 "DealService: сделка %s не содержит ключ 'ID'. Ключи: %s",

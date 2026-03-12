@@ -61,23 +61,23 @@ class BitrixService:
                 )
                 result = await to_thread.run_sync(
                     self.bx.get_all,
-                    "crm.deal.list",
-                    {
-                        "filter": {
-                            "ASSIGNED_BY_ID": bitrix_user_id,
-                            "CLOSED": "N",
-                        },
-                        "select": [
-                            "ID",
-                            "TITLE",
-                            "STAGE_ID",
-                            "CATEGORY_ID",
-                            "OPPORTUNITY",
-                            "CURRENCY_ID",
-                            "ASSIGNED_BY_ID",
-                        ],
+                "crm.deal.list",
+                {
+                    "filter": {
+                        "ASSIGNED_BY_ID": bitrix_user_id,
+                        "CLOSED": "N",
                     },
-                )
+                    "select": [
+                        "ID",
+                        "TITLE",
+                        "STAGE_ID",
+                        "CATEGORY_ID",
+                        "OPPORTUNITY",
+                        "CURRENCY_ID",
+                        "ASSIGNED_BY_ID",
+                    ],
+                },
+            )
                 # get_all() всегда возвращает список
                 deals = list(result) if result else []
                 logger.info(
