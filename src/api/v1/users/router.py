@@ -1,9 +1,9 @@
-from fastapi import APIRouter, status, Depends
+from fastapi import APIRouter, status, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.dependencies import UserServiceDep
 from src.schemas.user_schema import UserCreate, UserRead,UserUpdate
-from src.core.auth import get_tg_user
+from src.core.auth import get_tg_user, get_tg_user_or_admin
 from src.db.models.user_model import UserModel
 from src.db.initialize import get_db
 from src.schemas.price_schema import PriceRead
@@ -42,6 +42,24 @@ X-Telegram-Init-Data
 )
 async def get_me(current_user: UserModel = Depends(get_tg_user)):
     return UserRead.model_validate(current_user)
+
+
+@router.get("/", response_model=list[UserRead])
+async def list_users(
+    user_service: UserServiceDep,
+    _: UserModel = Depends(get_tg_user_or_admin),
+):
+    """
+    Вернуть список пользователей для выпадающих списков и т.п.
+
+    Авторизация:
+      - через X-Telegram-Init-Data (TMA), или
+      - через admin token в заголовке `token`.
+    """
+    users = await user_service.list_users()
+    if users is None:
+        raise HTTPException(status_code=404, detail="No users found")
+    return [UserRead.model_validate(u) for u in users]
 
 
 @router.get('/{id}', response_model=UserRead,status_code=status.HTTP_200_OK)
