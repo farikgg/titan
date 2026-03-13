@@ -617,6 +617,51 @@ class OfferService:
     # Get offer with items
     # --------------------------------------------------
 
+    async def get_offer_by_bitrix_deal(self, deal_id: int | str):
+        """
+        Возвращает оффер (КП) и его товары по ID сделки Bitrix24.
+        Используется для просмотра состава КП из карточки сделки.
+        """
+        deal_id_str = str(deal_id)
+
+        result = await self.db.execute(
+            select(OfferModel).where(
+                OfferModel.bitrix_deal_id == deal_id_str
+            )
+        )
+        offer = result.scalar_one_or_none()
+        if not offer:
+            return None
+
+        items_result = await self.db.execute(
+            select(OfferItemModel).where(
+                OfferItemModel.offer_id == offer.id
+            )
+        )
+        items = items_result.scalars().all()
+
+        return {
+            "id": offer.id,
+            "bitrix_deal_id": offer.bitrix_deal_id,
+            "status": offer.status.value,
+            "total": float(offer.total),
+            "currency": offer.currency,
+            "payment_terms": getattr(offer, "payment_terms", None),
+            "delivery_terms": getattr(offer, "delivery_terms", None),
+            "warranty_terms": getattr(offer, "warranty_terms", None),
+            "vat_enabled": getattr(offer, "vat_enabled", None),
+            "items": [
+                {
+                    "sku": i.sku,
+                    "name": i.name,
+                    "price": float(i.price),
+                    "quantity": i.quantity,
+                    "total": float(i.total),
+                }
+                for i in items
+            ],
+        }
+
     async def get_offer_with_items(self, offer_id: int):
 
         offer = await self.db.get(OfferModel, offer_id)

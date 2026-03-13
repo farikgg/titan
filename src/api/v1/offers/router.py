@@ -96,6 +96,24 @@ async def get_offer(
     return await service.get_offer_with_items(offer_id)
 
 
+@router.get("/by-deal/{deal_id}")
+async def get_offer_by_deal(
+    deal_id: int,
+    db: AsyncSession = Depends(get_db),
+    _: bool = Depends(verify_user_or_admin_token),
+):
+    """
+    Возвращает оффер (КП) и его товары по ID сделки Bitrix24.
+    Удобно вызывать из карточки сделки (воронка 9 / канбан),
+    где в интерфейсе нет отдельного списка товаров.
+    """
+    service = OfferService(db)
+    data = await service.get_offer_by_bitrix_deal(deal_id)
+    if not data:
+        raise HTTPException(status_code=404, detail="Offer for this deal not found")
+    return data
+
+
 @router.post("/{offer_id}/clear")
 async def clear_offer(
     offer_id: int,
