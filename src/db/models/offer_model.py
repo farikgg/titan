@@ -3,7 +3,7 @@ from datetime import datetime
 from decimal import Decimal
 
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy import String, Numeric, Enum, ForeignKey, func, Text
+from sqlalchemy import String, Numeric, Enum, ForeignKey, func, Text, Boolean
 
 from src.db.initialize import Base
 
@@ -47,3 +47,7 @@ class OfferModel(Base):
     payment_terms: Mapped[str | None] = mapped_column(Text, nullable=True)
     delivery_terms: Mapped[str | None] = mapped_column(Text, nullable=True)
     warranty_terms: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Флаг, включает ли итоговая цена НДС.
+    # Используется, в частности, для отображения/скрытия подписи «(без НДС)» в PDF.
+    vat_enabled: Mapped[bool | None] = mapped_column(Boolean, nullable=True)

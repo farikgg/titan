@@ -434,6 +434,8 @@ class OfferService:
                     item.total = item.price * item.quantity
 
                 await self.recalc_total(offer_id)
+                # Сохраняем флаг НДС на уровне оффера для использования при генерации PDF.
+                offer.vat_enabled = vat_enabled
                 changed = True
 
             elif supplier == "skf":
@@ -466,6 +468,8 @@ class OfferService:
                     item.total = item.price * item.quantity
 
                 await self.recalc_total(offer_id)
+                # Сохраняем флаг НДС на уровне оффера для использования при генерации PDF.
+                offer.vat_enabled = vat_enabled
                 changed = True
 
         if changed:
@@ -629,6 +633,7 @@ class OfferService:
             "payment_terms": getattr(offer, "payment_terms", None),
             "delivery_terms": getattr(offer, "delivery_terms", None),
             "warranty_terms": getattr(offer, "warranty_terms", None),
+            "vat_enabled": getattr(offer, "vat_enabled", None),
             "items": [
                 {
                     "sku": i.sku,

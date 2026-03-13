@@ -484,6 +484,8 @@ async def _generate_offer_pdf(offer_id: int, chat_id: int | None):
                     "id": offer.id,
                     "title": f"КП #{offer.id}",
                     "currency": offer.currency,
+                    # Флаг, включает ли цена НДС (управляет подписью «без НДС» в PDF)
+                    "vat_enabled": getattr(offer, "vat_enabled", None),
                     # Динамические текстовые поля условий
                     "payment_terms": getattr(offer, "payment_terms", None),
                     "delivery_terms": getattr(offer, "delivery_terms", None),
