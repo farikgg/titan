@@ -427,10 +427,13 @@ class OfferService:
                     with_duty = base * (1 + duty_pct_val / 100.0)
                     price_without_vat = with_duty * (1 + margin / 100.0)
 
+                    # Клиентская цена: с НДС, если он включён, иначе без НДС.
                     if vat_enabled:
-                        _ = price_without_vat * (1 + vat_pct_val / 100.0)
+                        price_for_client = price_without_vat * (1 + vat_pct_val / 100.0)
+                    else:
+                        price_for_client = price_without_vat
 
-                    item.price = Decimal(str(price_without_vat))
+                    item.price = Decimal(str(price_for_client))
                     item.total = item.price * item.quantity
 
                 await self.recalc_total(offer_id)
@@ -461,10 +464,13 @@ class OfferService:
                     with_duty = base * (1 + duty_pct_val / 100.0)
                     price_without_vat = with_duty * (1 + margin / 100.0)
 
+                    # Клиентская цена: с НДС, если он включён, иначе без НДС.
                     if vat_enabled:
-                        _ = price_without_vat * (1 + vat_pct_val / 100.0)
+                        price_for_client = price_without_vat * (1 + vat_pct_val / 100.0)
+                    else:
+                        price_for_client = price_without_vat
 
-                    item.price = Decimal(str(price_without_vat))
+                    item.price = Decimal(str(price_for_client))
                     item.total = item.price * item.quantity
 
                 await self.recalc_total(offer_id)
