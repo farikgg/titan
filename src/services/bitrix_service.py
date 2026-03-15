@@ -585,3 +585,121 @@ class BitrixService:
                 company_id,
             )
             return []
+
+    # ──────────────────────────────────────────────
+    #  Комментарии / Таймлайн сделки
+    # ──────────────────────────────────────────────
+
+    async def add_deal_comment(
+        self, deal_id: int, text: str, author_id: int | None = None
+    ) -> Optional[int]:
+        """
+        Добавляет комментарий в таймлайн сделки Bitrix24.
+        
+        Args:
+            deal_id: ID сделки в Bitrix24
+            text: Текст комментария
+            author_id: ID пользователя Bitrix24, который оставляет комментарий (опционально)
+        
+        Returns:
+            ID созданного комментария или None при ошибке
+        """
+        try:
+            fields = {
+                "ENTITY_ID": deal_id,
+                "ENTITY_TYPE": "deal",
+                "COMMENT": text,
+            }
+            
+            # Если указан автор — добавляем его ID
+            if author_id:
+                fields["AUTHOR_ID"] = author_id
+            
+            result = await to_thread.run_sync(
+                self.bx.call,
+                "crm.timeline.comment.add",
+                {"fields": fields},
+            )
+            
+            # fast_bitrix24 может вернуть ID напрямую или в обёртке
+            comment_id = None
+            if isinstance(result, (int, str)):
+                comment_id = int(result)
+            elif isinstance(result, dict):
+                comment_id = int(result.get("result", result.get("ID", 0)))
+            
+            if comment_id:
+                logger.info(
+                    "Bitrix: комментарий добавлен к сделке %s, comment_id=%s, author_id=%s",
+                    deal_id,
+                    comment_id,
+                    author_id,
+                )
+                return comment_id
+            else:
+                logger.warning(
+                    "Bitrix: add_deal_comment вернул неожиданный формат: %s",
+                    result,
+                )
+                return None
+        except Exception:
+            logger.exception(
+                "Bitrix: ошибка добавления комментария к сделке %s",
+                deal_id,
+            )
+            return None
+
+    async def get_deal_comments(self, deal_id: int, limit: int = 50) -> List[Dict]:
+        """
+        Получает комментарии из таймлайна сделки Bitrix24.
+        
+        Args:
+            deal_id: ID сделки в Bitrix24
+            limit: Максимальное количество комментариев (по умолчанию 50)
+        
+        Returns:
+            Список комментариев с полями: ID, CREATED, AUTHOR_ID, COMMENT, и т.д.
+        """
+        try:
+            # Используем crm.timeline.record.list для получения записей таймлайна
+            # Фильтруем по типу "comment" и entity_id/entity_type
+            result = await to_thread.run_sync(
+                self.bx.get_all,
+                "crm.timeline.record.list",
+                {
+                    "filter": {
+                        "ENTITY_ID": str(deal_id),  # Bitrix может требовать строку
+                        "ENTITY_TYPE": "deal",
+                        "TYPE": "comment",
+                    },
+                    "select": [
+                        "ID",
+                        "CREATED",
+                        "AUTHOR_ID",
+                        "COMMENT",
+                        "CREATED_BY",
+                    ],
+                    "order": {"CREATED": "DESC"},
+                },
+            )
+            
+            comments = list(result) if result else []
+            
+            # Ограничиваем количество
+            if limit and len(comments) > limit:
+                comments = comments[:limit]
+            
+            logger.info(
+                "Bitrix: получено %d комментариев для сделки %s",
+                len(comments),
+                deal_id,
+            )
+            
+            return comments
+        except Exception:
+            logger.exception(
+                "Bitrix: ошибка получения комментариев сделки %s",
+                deal_id,
+            )
+            # Возвращаем пустой список вместо None, чтобы фронт не падал
+            return []

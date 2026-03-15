@@ -8,7 +8,7 @@ from src.services.bitrix_service import BitrixService
 from src.services.price_service import PriceService
 from src.services.deal_service import DealService
 from src.core.rbac import require_permission
-from src.core.auth import get_tg_user
+from src.core.auth import get_tg_user, get_tg_user_or_admin
 from src.app.config import BITRIX_STAGES
 
 
@@ -436,4 +436,113 @@ async def get_stages_info():
             "LOSE_REASON_COMPETITOR": BITRIX_STAGES.LOSE_REASON_COMPETITOR,
         },
         "transitions": BITRIX_STAGES.allowed_transitions,
+    }
+
+
+# ──────────────────────────────────────────────
+#  Комментарии / Чат сделки
+# ──────────────────────────────────────────────
+
+
+class AddCommentRequest(BaseModel):
+    text: str
+    """Текст сообщения из Telegram Mini App"""
+
+
+@router.post(
+    "/{deal_id}/comments",
+    dependencies=[Depends(require_permission("deals.write"))],
+    summary="Отправить сообщение в чат сделки (синхронизация с Bitrix)",
+)
+async def add_deal_comment(
+    deal_id: int,
+    body: AddCommentRequest,
+    user=Depends(get_tg_user_or_admin),
+):
+    """
+    Добавляет комментарий к сделке в Bitrix24 из Telegram Mini App.
+    
+    Сообщение, отправленное пользователем в TMA, будет синхронизировано
+    в таймлайн сделки в Bitrix24 как комментарий.
+    
+    Требует:
+      - deal_id: ID сделки в Bitrix24
+      - text: Текст сообщения
+    """
+    if not body.text or not body.text.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="Текст сообщения не может быть пустым",
+        )
+    
+    bitrix_service = _get_bitrix_service()
+    
+    # Получаем bitrix_user_id пользователя для указания автора комментария
+    author_id = getattr(user, "bitrix_user_id", None)
+    
+    # Проверяем, что сделка существует
+    deal = await bitrix_service.get_deal(deal_id)
+    if not deal:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Сделка {deal_id} не найдена в Bitrix24",
+        )
+    
+    # Добавляем комментарий в Bitrix
+    comment_id = await bitrix_service.add_deal_comment(
+        deal_id=deal_id,
+        text=body.text.strip(),
+        author_id=author_id,
+    )
+    
+    if not comment_id:
+        raise HTTPException(
+            status_code=502,
+            detail="Не удалось добавить комментарий в Bitrix24",
+        )
+    
+    return {
+        "deal_id": deal_id,
+        "comment_id": comment_id,
+        "text": body.text.strip(),
+        "author_id": author_id,
+    }
+
+
+@router.get(
+    "/{deal_id}/comments",
+    dependencies=[Depends(require_permission("deals.read"))],
+    summary="Получить комментарии из чата сделки (из Bitrix)",
+)
+async def get_deal_comments(
+    deal_id: int,
+    limit: int = 50,
+    user=Depends(get_tg_user_or_admin),
+):
+    """
+    Получает комментарии из таймлайна сделки в Bitrix24.
+    
+    Возвращает список комментариев, отсортированных по дате создания (новые сверху).
+    
+    Параметры:
+      - deal_id: ID сделки в Bitrix24
+      - limit: Максимальное количество комментариев (по умолчанию 50)
+    """
+    bitrix_service = _get_bitrix_service()
+    
+    # Проверяем, что сделка существует
+    deal = await bitrix_service.get_deal(deal_id)
+    if not deal:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Сделка {deal_id} не найдена в Bitrix24",
+        )
+    
+    # Получаем комментарии
+    comments = await bitrix_service.get_deal_comments(deal_id=deal_id, limit=limit)
+    
+    return {
+        "deal_id": deal_id,
+        "comments": comments,
+        "total": len(comments),
     }
