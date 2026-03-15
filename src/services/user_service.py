@@ -60,3 +60,11 @@ class UserService:
             raise UserCannotBeDeletedError()
 
         return user_id
+
+    async def list_users(self) -> list[UserModel] | None:
+        """Получает список всех пользователей"""
+        try:
+            users = await self.repo.get_all()
+            return list(users) if users else None
+        except Exception:
+            return None

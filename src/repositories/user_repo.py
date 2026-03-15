@@ -69,6 +69,11 @@ class UserRepository:
         )
         return result.scalar_one_or_none()
 
+    async def get_all(self):
+        """Получает всех пользователей"""
+        result = await self.session.execute(select(UserModel))
+        return result.scalars().all()
+
     @staticmethod
     async def create(tg_id: int, username: str):
         async with async_session() as session:
