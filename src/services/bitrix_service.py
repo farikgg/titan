@@ -686,12 +686,18 @@ class BitrixService:
                 params,
             )
 
-            # Ответ Bitrix может быть либо списком, либо словарём с ключом "result"
+            # Ответ Bitrix может быть либо списком, либо словарём:
+            # 1) {"result": {"items": [...], "next": ...}}
+            # 2) {"result": [...]} или просто [...]
             comments: List[Dict] = []
             if isinstance(result, dict):
                 raw = result.get("result", result)
                 if isinstance(raw, list):
                     comments = raw
+                elif isinstance(raw, dict) and "items" in raw:
+                    inner_items = raw.get("items") or []
+                    if isinstance(inner_items, list):
+                        comments = inner_items
             elif isinstance(result, list):
                 comments = result
 
