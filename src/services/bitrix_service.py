@@ -666,10 +666,11 @@ class BitrixService:
             # ВАЖНО: fast_bitrix24.get_all НЕ поддерживает параметр ORDER,
             # поэтому здесь используем прямой вызов .call без get_all.
             params: Dict[str, object] = {
+                # Для crm.timeline.comment.list достаточно указать сущность сделки.
+                # Дополнительный фильтр по TYPE не нужен (метод уже возвращает только комментарии).
                 "filter": {
                     "ENTITY_ID": str(deal_id),  # Bitrix может требовать строку
                     "ENTITY_TYPE": "deal",
-                    "TYPE": "comment",
                 },
                 "select": [
                     "ID",
