@@ -661,30 +661,39 @@ class BitrixService:
             Список комментариев с полями: ID, CREATED, AUTHOR_ID, COMMENT, и т.д.
         """
         try:
-            # Используем crm.timeline.record.list для получения записей таймлайна
-            # Фильтруем по типу "comment" и entity_id/entity_type
-            result = await to_thread.run_sync(
-                self.bx.get_all,
-                "crm.timeline.record.list",
-                {
-                    "filter": {
-                        "ENTITY_ID": str(deal_id),  # Bitrix может требовать строку
-                        "ENTITY_TYPE": "deal",
-                        "TYPE": "comment",
-                    },
-                    "select": [
-                        "ID",
-                        "CREATED",
-                        "AUTHOR_ID",
-                        "COMMENT",
-                        "CREATED_BY",
-                    ],
-                    "order": {"CREATED": "DESC"},
+            # ВАЖНО: fast_bitrix24.get_all НЕ поддерживает параметр ORDER,
+            # поэтому здесь используем прямой вызов .call без get_all.
+            params: Dict[str, object] = {
+                "filter": {
+                    "ENTITY_ID": str(deal_id),  # Bitrix может требовать строку
+                    "ENTITY_TYPE": "deal",
+                    "TYPE": "comment",
                 },
+                "select": [
+                    "ID",
+                    "CREATED",
+                    "AUTHOR_ID",
+                    "COMMENT",
+                    "CREATED_BY",
+                ],
+                "order": {"CREATED": "DESC"},
+            }
+
+            result = await to_thread.run_sync(
+                self.bx.call,
+                "crm.timeline.record.list",
+                params,
             )
-            
-            comments = list(result) if result else []
-            
+
+            # Ответ Bitrix может быть либо списком, либо словарём с ключом "result"
+            comments: List[Dict] = []
+            if isinstance(result, dict):
+                raw = result.get("result", result)
+                if isinstance(raw, list):
+                    comments = raw
+            elif isinstance(result, list):
+                comments = result
+
             # Ограничиваем количество
             if limit and len(comments) > limit:
                 comments = comments[:limit]
