@@ -402,7 +402,9 @@ class BitrixService:
         Сейчас используется поле:
           - UF_CRM_1744861655415 — «Вложить Договор и Спецификацию»
         """
-        uf_field_code = "UF_CRM_1744861655415"
+        # Поле пользовательского файла КП в сделке Bitrix24.
+        # Проверено по deal 7753: именно UF_CRM_1744862238040 содержит offer_*.pdf.
+        uf_field_code = "UF_CRM_1744862238040"
 
         try:
             if not pdf_path.exists():
