@@ -8,6 +8,8 @@ from src.services.offer_service import OfferService
 from src.core.auth import get_tg_user, get_tg_user_or_admin
 from src.worker.tasks import generate_offer_pdf_task
 from src.app.config import settings
+from src.core.bitrix import get_bitrix_client
+from src.services.bitrix_service import BitrixService
 
 router = APIRouter(prefix="/offers", tags=["Offers"])
 
@@ -238,3 +240,78 @@ async def generate_pdf(
     chat_id = user.tg_id  # в приватном чате chat_id == tg_id
     task = generate_offer_pdf_task.delay(offer_id, chat_id)
     return {"task_id": task.id, "status": "queued"}
+
+
+@router.post("/sync-from-deal/{deal_id}")
+async def sync_offer_from_deal(
+    deal_id: int,
+    db: AsyncSession = Depends(get_db),
+    _: bool = Depends(verify_user_or_admin_token),
+):
+    """
+    Создаёт (или переиспользует) offer для существующей сделки Bitrix по её ID,
+    подтягивая товары из `crm.deal.productrows.get`.
+
+    Нужен для того, чтобы:
+    - по уже созданной в Bitrix сделке подтянуть товары в Titan,
+    - показать их в TMA,
+    - уметь сгенерировать КП (PDF) по этим товарам.
+    """
+    # 1. Получаем сделку и её товары из Bitrix
+    bx = get_bitrix_client()
+    bitrix = BitrixService(bx)
+
+    deal = await bitrix.get_deal(deal_id)
+    if not deal:
+        raise HTTPException(status_code=404, detail=f"Bitrix deal {deal_id} not found")
+
+    products = await bitrix.get_deal_products(deal_id)
+
+    # Если в сделке нет товаров — нет смысла создавать offer
+    if not products:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Bitrix deal {deal_id} has no products",
+        )
+
+    # 2. Готовим список товаров в формате, который понимает OfferService.create_offer_for_deal
+    currency = deal.get("CURRENCY_ID") or "KZT"
+    items: list[dict] = []
+    for p in products:
+        name = p.get("PRODUCT_NAME") or "Товар"
+        price = float(p.get("PRICE", 0) or 0)
+        qty_raw = p.get("QUANTITY", 1) or 1
+        try:
+            quantity = int(qty_raw)
+        except (TypeError, ValueError):
+            quantity = 1
+
+        items.append(
+            {
+                "sku": name,  # в Bitrix нет явного артикула, используем название
+                "name": name,
+                "price": price,
+                "quantity": quantity,
+                "currency": currency,
+                "found": False,  # эти товары пришли не из прайса
+            }
+        )
+
+    # 3. Определяем Bitrix user ID ответственного
+    assigned_by_id_raw = deal.get("ASSIGNED_BY_ID")
+    try:
+        assigned_by_id = int(assigned_by_id_raw) if assigned_by_id_raw else 109
+    except (TypeError, ValueError):
+        assigned_by_id = 109
+
+    # 4. Создаём или переиспользуем offer для этой сделки
+    service = OfferService(db)
+    offer = await service.create_offer_for_deal(
+        deal_id=deal_id,
+        bitrix_user_id=assigned_by_id,
+        items=items,
+        currency=currency,
+    )
+
+    # 5. Возвращаем offer с товарами в удобном формате
+    return await service.get_offer_with_items(offer.id)
