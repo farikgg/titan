@@ -141,6 +141,9 @@ class UpdateOfferTermsRequest(BaseModel):
     delivery_terms: str | None = None
     warranty_terms: str | None = None
 
+    # Валюта КП (KZT / RUB / EUR / USD и т.п.)
+    currency: str | None = None
+
     # -----------------------------
     # Параметры расчёта цен
     # -----------------------------
@@ -210,6 +213,7 @@ async def update_terms(
             payment_terms=body.payment_terms,
             delivery_terms=body.delivery_terms,
             warranty_terms=body.warranty_terms,
+            currency=body.currency,
             supplier_type=body.supplier_type,
             fuchs_margin_pct=body.fuchs_margin_pct,
             fuchs_vat_enabled=body.fuchs_vat_enabled,

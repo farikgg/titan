@@ -357,6 +357,7 @@ class OfferService:
         payment_terms: str | None = None,
         delivery_terms: str | None = None,
         warranty_terms: str | None = None,
+        currency: str | None = None,
         supplier_type: str | None = None,
         fuchs_margin_pct: float | None = None,
         fuchs_vat_enabled: bool | None = None,
@@ -385,6 +386,9 @@ class OfferService:
             changed = True
         if warranty_terms is not None:
             offer.warranty_terms = warranty_terms
+            changed = True
+        if currency is not None:
+            offer.currency = currency
             changed = True
 
         # --------------------------------------------------
