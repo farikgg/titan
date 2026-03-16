@@ -691,6 +691,11 @@ class BitrixService:
             # Ответ Bitrix может быть либо списком, либо словарём:
             # 1) {"result": {"items": [...], "next": ...}}
             # 2) {"result": [...]} или просто [...]
+            logger.debug(
+                "Bitrix: raw response for crm.timeline.comment.list deal_id=%s: %s",
+                deal_id,
+                result,
+            )
             comments: List[Dict] = []
             if isinstance(result, dict):
                 raw = result.get("result", result)
