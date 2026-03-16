@@ -691,7 +691,8 @@ class BitrixService:
             # Ответ Bitrix может быть либо списком, либо словарём:
             # 1) {"result": {"items": [...], "next": ...}}
             # 2) {"result": [...]} или просто [...]
-            logger.debug(
+            # Логируем на INFO, чтобы это было видно в стандартных логах docker compose
+            logger.info(
                 "Bitrix: raw response for crm.timeline.comment.list deal_id=%s: %s",
                 deal_id,
                 result,
