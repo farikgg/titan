@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request, Header
+from typing import Annotated
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -9,6 +10,7 @@ from src.services.price_service import PriceService
 from src.services.deal_service import DealService
 from src.core.rbac import require_permission
 from src.core.auth import get_tg_user, get_tg_user_or_admin
+from src.app.config import settings
 from src.app.config import BITRIX_STAGES
 
 
@@ -23,6 +25,28 @@ def _get_deal_service() -> DealService:
 def _get_bitrix_service() -> BitrixService:
     bx = get_bitrix_client()
     return BitrixService(bx)
+
+
+async def verify_user_or_admin_token(
+    request: Request,
+    token: Annotated[str | None, Header()] = None,
+):
+    """
+    Для некоторых ручек (например, комментарии сделки) разрешаем доступ:
+      1) либо через X-Telegram-Init-Data (TMA),
+      2) либо через ADMIN_SECRET_TOKEN в заголовке `token`.
+    """
+    x_telegram_init_data = request.headers.get("X-Telegram-Init-Data")
+    if x_telegram_init_data:
+        return True
+
+    if token and token == settings.ADMIN_SECRET_TOKEN:
+        return True
+
+    raise HTTPException(
+        status_code=401,
+        detail="Unauthorized: need Telegram init data or valid admin token",
+    )
 
 
 # ──────────────────────────────────────────────
@@ -451,7 +475,7 @@ class AddCommentRequest(BaseModel):
 
 @router.post(
     "/{deal_id}/comments",
-    dependencies=[Depends(require_permission("deals.write"))],
+    dependencies=[Depends(verify_user_or_admin_token)],
     summary="Отправить сообщение в чат сделки (синхронизация с Bitrix)",
 )
 async def add_deal_comment(
@@ -511,7 +535,7 @@ async def add_deal_comment(
 
 @router.get(
     "/{deal_id}/comments",
-    dependencies=[Depends(require_permission("deals.read"))],
+    dependencies=[Depends(verify_user_or_admin_token)],
     summary="Получить комментарии из чата сделки (из Bitrix)",
 )
 async def get_deal_comments(
