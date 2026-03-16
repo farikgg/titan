@@ -681,7 +681,8 @@ class BitrixService:
 
             result = await to_thread.run_sync(
                 self.bx.call,
-                "crm.timeline.record.list",
+                # В Bitrix24 для комментариев используется метод crm.timeline.comment.list
+                "crm.timeline.comment.list",
                 params,
             )
 
