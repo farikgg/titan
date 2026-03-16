@@ -4,8 +4,9 @@ from typing import List, Dict, Optional
 from anyio import to_thread
 from pathlib import Path
 from fast_bitrix24 import Bitrix
+import httpx
 
-from src.app.config import BITRIX_STAGES
+from src.app.config import BITRIX_STAGES, settings
 
 logger = logging.getLogger(__name__)
 
@@ -663,52 +664,30 @@ class BitrixService:
             Список комментариев с полями: ID, CREATED, AUTHOR_ID, COMMENT, и т.д.
         """
         try:
-            # ВАЖНО: fast_bitrix24.get_all НЕ поддерживает параметр ORDER,
-            # поэтому здесь используем прямой вызов .call без get_all.
-            params: Dict[str, object] = {
-                # Для crm.timeline.comment.list достаточно указать сущность сделки.
-                # Дополнительный фильтр по TYPE не нужен (метод уже возвращает только комментарии).
-                "filter": {
-                    "ENTITY_ID": str(deal_id),  # Bitrix может требовать строку
-                    "ENTITY_TYPE": "deal",
-                },
-                "select": [
-                    "ID",
-                    "CREATED",
-                    "AUTHOR_ID",
-                    "COMMENT",
-                    "CREATED_BY",
-                ],
-                "order": {"CREATED": "DESC"},
-            }
+            # Обходим fast_bitrix24 и вызываем REST Bitrix24 напрямую,
+            # используя тот же формат, что и рабочий curl-запрос.
+            webhook = settings.BITRIX_WEBHOOK.rstrip("/")
+            url = f"{webhook}/crm.timeline.comment.list.json"
 
-            result = await to_thread.run_sync(
-                self.bx.call,
-                # В Bitrix24 для комментариев используется метод crm.timeline.comment.list
-                "crm.timeline.comment.list",
-                params,
-            )
+            async with httpx.AsyncClient(timeout=10) as client:
+                resp = await client.get(
+                    url,
+                    params={
+                        "filter[ENTITY_ID]": deal_id,
+                        "filter[ENTITY_TYPE]": "deal",
+                    },
+                )
+                resp.raise_for_status()
+                data = resp.json()
 
-            # Ответ Bitrix может быть либо списком, либо словарём:
-            # 1) {"result": {"items": [...], "next": ...}}
-            # 2) {"result": [...]} или просто [...]
-            # Логируем на INFO, чтобы это было видно в стандартных логах docker compose
             logger.info(
                 "Bitrix: raw response for crm.timeline.comment.list deal_id=%s: %s",
                 deal_id,
-                result,
+                data,
             )
-            comments: List[Dict] = []
-            if isinstance(result, dict):
-                raw = result.get("result", result)
-                if isinstance(raw, list):
-                    comments = raw
-                elif isinstance(raw, dict) and "items" in raw:
-                    inner_items = raw.get("items") or []
-                    if isinstance(inner_items, list):
-                        comments = inner_items
-            elif isinstance(result, list):
-                comments = result
+
+            raw = data.get("result", [])
+            comments: List[Dict] = raw if isinstance(raw, list) else []
 
             # Ограничиваем количество
             if limit and len(comments) > limit:
