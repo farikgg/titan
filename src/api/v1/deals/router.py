@@ -45,7 +45,7 @@ class CreateDealRequest(BaseModel):
 )
 async def create_deal(
     body: CreateDealRequest,
-    user=Depends(get_tg_user),
+    user=Depends(get_tg_user_or_admin),
 ):
     """
     Создать сделку в воронке «Гидротех.Сделки» из Telegram Mini App.
@@ -127,7 +127,7 @@ class ContactShort(BaseModel):
 async def search_companies(
     q: str,
     limit: int = 20,
-    user=Depends(get_tg_user),
+    user=Depends(get_tg_user_or_admin),
 ):
     """
     Поиск компаний в Bitrix24 для выбора клиента при создании сделки.
@@ -174,7 +174,7 @@ async def search_contacts(
     q: str,
     company_id: int | None = None,
     limit: int = 20,
-    user=Depends(get_tg_user),
+    user=Depends(get_tg_user_or_admin),
 ):
     """
     Поиск контактов в Bitrix24 для выбора контактного лица при создании сделки.
@@ -230,7 +230,7 @@ async def search_contacts(
     dependencies=[Depends(require_permission("deals.read"))],
 )
 async def list_deals(
-    user=Depends(get_tg_user),
+    user=Depends(get_tg_user_or_admin),
     stage: str | None = None,  # Фильтр по стадии: NEW, FINAL_INVOICE, EXECUTING, WON, LOSE
     manager_bitrix_id: int | None = None,  # Для руководителей/админов: фильтр по ответственному
 ):
@@ -320,7 +320,7 @@ async def list_deals(
 async def get_deal(
     deal_id: int,
     db: AsyncSession = Depends(get_db),
-    user=Depends(get_tg_user),
+    user=Depends(get_tg_user_or_admin),
 ):
     dto = await _get_deal_service().get_deal_dto(
         deal_id=deal_id,
@@ -351,7 +351,7 @@ class StageTransitionRequest(BaseModel):
 async def change_deal_stage(
     deal_id: int,
     body: StageTransitionRequest,
-    user=Depends(get_tg_user),
+    user=Depends(get_tg_user_or_admin),
 ):
     deal_service = _get_deal_service()
 
