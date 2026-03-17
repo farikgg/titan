@@ -401,7 +401,7 @@ class BitrixService:
 
         ВНИМАНИЕ: код поля UF_CRM_... нужно держать в синхронизации с Bitrix.
         Сейчас используется поле:
-          - UF_CRM_1744861655415 — «Вложить Договор и Спецификацию»
+          - UF_CRM_1744862238040 — «Вложить Договор и Спецификацию»
         """
         # Поле пользовательского файла КП в сделке Bitrix24.
         # Проверено по deal 7753: именно UF_CRM_1744862238040 содержит offer_*.pdf.
@@ -412,32 +412,45 @@ class BitrixService:
                 logger.error("attach_kp_pdf: файл %s не найден", pdf_path)
                 return False
 
+            # Используем прямой HTTP запрос через httpx, как в get_deal_comments,
+            # потому что fast_bitrix24 не всегда корректно обрабатывает файлы в пользовательских полях.
+            webhook = settings.BITRIX_WEBHOOK.rstrip("/")
+            url = f"{webhook}/crm.deal.update.json"
+
             file_bytes = pdf_path.read_bytes()
 
-            fields = {
-                uf_field_code: [
-                    {
-                        "fileData": (
-                            pdf_path.name,
-                            file_bytes,
-                        )
-                    }
-                ]
-            }
+            async with httpx.AsyncClient(timeout=30) as client:
+                # Bitrix24 требует multipart/form-data с полем fileData.
+                # Формат: fields[UF_CRM_...][0][fileData] = (filename, file_bytes)
+                # Используем data для обычных полей и files для файла
+                data = {
+                    "id": str(deal_id),
+                }
+                files = {
+                    f"fields[{uf_field_code}][0][fileData]": (pdf_path.name, file_bytes, "application/pdf"),
+                }
+                
+                resp = await client.post(url, data=data, files=files)
+                resp.raise_for_status()
+                result = resp.json()
 
-            await to_thread.run_sync(
-                self.bx.call,
-                "crm.deal.update",
-                {"id": deal_id, "fields": fields},
-            )
-
-            logger.info(
-                "Bitrix: к сделке %s прикреплён файл КП %s в поле %s",
-                deal_id,
-                pdf_path.name,
-                uf_field_code,
-            )
-            return True
+            # Проверяем результат
+            if result.get("result") is True or result.get("result") == {}:
+                logger.info(
+                    "Bitrix: к сделке %s прикреплён файл КП %s в поле %s",
+                    deal_id,
+                    pdf_path.name,
+                    uf_field_code,
+                )
+                return True
+            else:
+                logger.error(
+                    "Bitrix: ошибка прикрепления КП %s к сделке %s. Ответ: %s",
+                    pdf_path.name,
+                    deal_id,
+                    result,
+                )
+                return False
         except Exception:
             logger.exception(
                 "Bitrix: ошибка прикрепления КП %s к сделке %s",
