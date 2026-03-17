@@ -12,6 +12,8 @@ from src.core.rbac import require_permission
 from src.core.auth import get_tg_user, get_tg_user_or_admin
 from src.app.config import settings
 from src.app.config import BITRIX_STAGES
+from src.db.models.offer_model import OfferModel
+from pathlib import Path
 
 
 router = APIRouter(prefix="/deals", tags=["Deals"])
@@ -460,6 +462,73 @@ async def get_stages_info():
             "LOSE_REASON_COMPETITOR": BITRIX_STAGES.LOSE_REASON_COMPETITOR,
         },
         "transitions": BITRIX_STAGES.allowed_transitions,
+    }
+
+
+# ──────────────────────────────────────────────
+#  Прикрепление КП (PDF) к сделке вручную
+# ──────────────────────────────────────────────
+
+
+class AttachKpRequest(BaseModel):
+    offer_id: int
+
+
+@router.post(
+    "/{deal_id}/attach-kp",
+    dependencies=[Depends(require_permission("deals.write")), Depends(verify_user_or_admin_token)],
+    summary="Ручное прикрепление PDF КП к сделке Bitrix24",
+)
+async def attach_kp_to_deal(
+    deal_id: int,
+    body: AttachKpRequest,
+    db: AsyncSession = Depends(get_db),
+    user=Depends(get_tg_user_or_admin),
+):
+    """
+    Ручной сценарий:
+
+    - В TMA уже есть сделка (создана из мини‑апки или почты),
+    - Есть сгенерированное КП (offer) с полем pdf_path,
+    - Нужно прикрепить это КП к сделке в Bitrix24.
+
+    Требует:
+      - deal_id — ID сделки в Bitrix24
+      - offer_id — ID оффера в Titan
+    """
+    # 1. Находим оффер и проверяем наличие PDF
+    offer = await db.get(OfferModel, body.offer_id)
+    if not offer:
+        raise HTTPException(status_code=404, detail=f"Offer {body.offer_id} not found")
+
+    pdf_path_raw = getattr(offer, "pdf_path", None)
+    if not pdf_path_raw:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Offer {body.offer_id} has no generated PDF (pdf_path is empty)",
+        )
+
+    pdf_path = Path(pdf_path_raw)
+    if not pdf_path.exists():
+        raise HTTPException(
+            status_code=400,
+            detail=f"PDF file not found on server: {pdf_path}",
+        )
+
+    # 2. Прикрепляем PDF к сделке через BitrixService
+    bitrix = _get_bitrix_service()
+    ok = await bitrix.attach_kp_pdf(deal_id=deal_id, pdf_path=pdf_path)
+
+    if not ok:
+        raise HTTPException(
+            status_code=502,
+            detail="Failed to attach PDF to deal in Bitrix24",
+        )
+
+    return {
+        "deal_id": deal_id,
+        "offer_id": body.offer_id,
+        "attached": True,
     }
 
 
