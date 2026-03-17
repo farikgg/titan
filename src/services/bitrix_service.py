@@ -418,19 +418,19 @@ class BitrixService:
             url = f"{webhook}/crm.deal.update.json"
 
             file_bytes = pdf_path.read_bytes()
+            import base64
+            file_base64 = base64.b64encode(file_bytes).decode("utf-8")
 
             async with httpx.AsyncClient(timeout=30) as client:
-                # Bitrix24 требует multipart/form-data с полем fileData.
-                # Формат: fields[UF_CRM_...][0][fileData] = (filename, file_bytes)
-                # Используем data для обычных полей и files для файла
+                # Bitrix24 REST API требует base64 формат для файлов в пользовательских полях.
+                # Формат: fields[UF_CRM_...][fileData][0] = filename, fields[UF_CRM_...][fileData][1] = base64_content
                 data = {
                     "id": str(deal_id),
-                }
-                files = {
-                    f"fields[{uf_field_code}][0][fileData]": (pdf_path.name, file_bytes, "application/pdf"),
+                    f"fields[{uf_field_code}][fileData][0]": pdf_path.name,
+                    f"fields[{uf_field_code}][fileData][1]": file_base64,
                 }
                 
-                resp = await client.post(url, data=data, files=files)
+                resp = await client.post(url, data=data)
                 resp.raise_for_status()
                 result = resp.json()
 
