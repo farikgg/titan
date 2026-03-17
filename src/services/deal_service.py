@@ -302,6 +302,15 @@ class DealService:
         }
         stage_name = stage_name_map.get(stage_id, stage_id)
 
+        # Информация о наличии КП (файла) в сделке.
+        # В Bitrix24 пользовательское поле UF_CRM_1744862238040 хранит файлы КП.
+        # Если массив не пустой — считаем, что КП уже прикреплено.
+        kp_files_raw = deal.get("UF_CRM_1744862238040") or []
+        kp_files: List[Dict[str, Any]] = []
+        if isinstance(kp_files_raw, list):
+            kp_files = [f for f in kp_files_raw if isinstance(f, dict)]
+        has_kp = bool(kp_files)
+
         return {
             "deal": {
                 "id": int(deal["ID"]),
@@ -315,7 +324,11 @@ class DealService:
                 "assigned_by_id": deal.get("ASSIGNED_BY_ID"),
                 "company_id": company_id,
                 "company_name": company_name,  # Название компании (клиента)
+                # Флаг для TMA: есть ли уже прикреплённое КП в сделке
+                "has_kp": has_kp,
             },
+            # Сырой список файлов КП из Bitrix (id, showUrl, downloadUrl и т.п.)
+            "kp_files": kp_files,
             "products": valid_products,
             "resolved_prices": resolved_prices,
         }
