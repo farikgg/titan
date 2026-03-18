@@ -62,6 +62,24 @@ async def list_users(
     return [UserRead.model_validate(u) for u in users]
 
 
+@router.get("/search", response_model=list[UserRead])
+async def search_users(
+    q: str,
+    limit: int = 20,
+    user_service: UserServiceDep = Depends(),
+    _: UserModel = Depends(get_tg_user_or_admin),
+):
+    """
+    Поиск пользователей (для автокомплита на фронте).
+
+    Авторизация:
+      - через X-Telegram-Init-Data (TMA), или
+      - через admin token в заголовке `token`.
+    """
+    users = await user_service.search_users(q=q, limit=limit)
+    return [UserRead.model_validate(u) for u in users]
+
+
 @router.get('/{id}', response_model=UserRead,status_code=status.HTTP_200_OK)
 async def get_by_id(id: int, user_service: UserServiceDep):
     user = await user_service.get_user(id)

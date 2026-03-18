@@ -68,3 +68,6 @@ class UserService:
             return list(users) if users else None
         except Exception:
             return None
+
+    async def search_users(self, q: str, limit: int = 20) -> list[UserModel]:
+        return await self.repo.search(q=q, limit=limit)

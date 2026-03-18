@@ -1,5 +1,5 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, or_
 
 from src.db.initialize import async_session
 from src.db.models.user_model import UserModel
@@ -73,6 +73,29 @@ class UserRepository:
         """Получает всех пользователей"""
         result = await self.session.execute(select(UserModel))
         return result.scalars().all()
+
+    async def search(self, q: str, limit: int = 20) -> list[UserModel]:
+        """
+        Поиск пользователей для автокомплита:
+        - по username (ILIKE %q%)
+        - если q — число, дополнительно по bitrix_user_id
+        """
+        q = (q or "").strip()
+        if not q:
+            return []
+
+        conditions = [UserModel.username.ilike(f"%{q}%")]
+        if q.isdigit():
+            conditions.append(UserModel.bitrix_user_id == int(q))
+
+        stmt = (
+            select(UserModel)
+            .where(or_(*conditions))
+            .order_by(UserModel.username.asc())
+            .limit(limit)
+        )
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
 
     @staticmethod
     async def create(tg_id: int, username: str):
