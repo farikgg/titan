@@ -15,6 +15,10 @@ class PriceBase(BaseModel):
     source: Source
     source_type: SourceType
     email_message_id: Optional[str] = None
+    # FUCHS validity
+    first_seen_at: Optional[datetime] = None
+    valid_from: Optional[datetime] = None
+    valid_days: Optional[int] = None
 
 
 class PriceCreate(PriceBase):
@@ -24,5 +28,7 @@ class PriceCreate(PriceBase):
 class PriceRead(PriceBase):
     id: int
     updated_at: datetime
+    valid_to: Optional[datetime] = None
+    validity_status: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)

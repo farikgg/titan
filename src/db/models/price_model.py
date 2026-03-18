@@ -1,9 +1,9 @@
 import enum
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 
 from sqlalchemy.orm import Mapped, mapped_column
-from sqlalchemy import String, Numeric, Enum, func, Text, UniqueConstraint, DateTime
+from sqlalchemy import String, Numeric, Enum, func, Text, UniqueConstraint, DateTime, Integer
 
 from src.db.initialize import Base
 
@@ -32,9 +32,45 @@ class PriceModel(Base):
     source_type: Mapped[SourceType] = mapped_column(Enum(SourceType))
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
 
+    # --- FUCHS price validity tracking ---
+    # first_seen_at: дата первого письма/первого появления артикула (не меняется назад)
+    first_seen_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    # valid_from: дата начала действия текущей цены (дата получения письма/обновления)
+    valid_from: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    # valid_days: срок действия цены (по умолчанию 90)
+    valid_days: Mapped[int] = mapped_column(Integer, nullable=False, server_default="90")
+
     __table_args__ = (
         UniqueConstraint("art", "source", name="uq_price_art_source"),
     )
+
+    @property
+    def valid_to(self) -> datetime | None:
+        if not self.valid_from:
+            return None
+        days = int(self.valid_days or 90)
+        return self.valid_from + timedelta(days=days)
+
+    @property
+    def validity_status(self) -> str:
+        """
+        Возвращает статус цены:
+          - 'unknown' (если нет valid_from)
+          - 'valid'
+          - 'expiring_soon' (<= 7 дней до конца)
+          - 'expired'
+        """
+        if not self.valid_from:
+            return "unknown"
+        vt = self.valid_to
+        if not vt:
+            return "unknown"
+        now = datetime.utcnow()
+        if now > vt:
+            return "expired"
+        if (vt - now).days <= 7:
+            return "expiring_soon"
+        return "valid"
 
 class EmailProcessing(Base):
     __tablename__ = "email_processing"

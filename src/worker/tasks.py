@@ -78,6 +78,7 @@ def parse_from_fuchs(self):
                         "message_ids": message_id,
                         "subject": msg.get("subject"),
                         "body": msg.get("bodyPreview", ""),
+                        "receivedDateTime": msg.get("receivedDateTime"),
                         "attachments": attachments,
                     })
         finally:
@@ -214,6 +215,7 @@ def parse_from_requests(self):
                         "subject": msg.get("subject", ""),
                         "body": msg.get("body", {}).get("content", ""),
                         "bodyPreview": msg.get("bodyPreview", ""),
+                        "receivedDateTime": msg.get("receivedDateTime"),
                         "from": sender_email,
                         "sender": {
                             "emailAddress": sender_info,

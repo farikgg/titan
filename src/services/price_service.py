@@ -45,6 +45,25 @@ class PriceService:
         """
         existing = await self.repo.get_by_art(db, price_data.art)
         if existing:
+            # first_seen_at: сохраняем дату первого появления артикула
+            # valid_from: дата начала действия текущей цены
+            valid_from = getattr(price_data, "valid_from", None)
+            first_seen = getattr(existing, "first_seen_at", None)
+            if valid_from:
+                if first_seen is None or valid_from < first_seen:
+                    # если это самое раннее письмо — фиксируем
+                    price_data = price_data.model_copy(update={"first_seen_at": valid_from})
+                else:
+                    # иначе сохраняем существующее
+                    price_data = price_data.model_copy(update={"first_seen_at": first_seen})
+            else:
+                # если дата не передана — не трогаем первое появление
+                price_data = price_data.model_copy(update={"first_seen_at": first_seen})
+
+            # valid_days: если не передали — ставим дефолт 90
+            if getattr(price_data, "valid_days", None) is None:
+                price_data = price_data.model_copy(update={"valid_days": 90})
+
             return await self.repo.update(db, existing, price_data)
         return await self.repo.create(db, price_data)
 

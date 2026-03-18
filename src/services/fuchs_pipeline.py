@@ -10,6 +10,7 @@ from src.db.initialize import async_session
 from src.app.config import settings
 
 import logging
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +36,20 @@ async def process_fuchs_message(msg_dict: dict) -> str:
 
     if not message_id:
         return "No message id"
+
+    # Дата получения письма из Microsoft Graph (ISO 8601), например: "2026-03-18T04:08:09Z"
+    received_raw = msg_dict.get("receivedDateTime")
+    received_at: datetime | None = None
+    if isinstance(received_raw, str) and received_raw.strip():
+        try:
+            # поддерживаем Z
+            iso = received_raw.replace("Z", "+00:00")
+            received_at = datetime.fromisoformat(iso)
+            # нормализуем к naive UTC для хранения/сравнения
+            if received_at.tzinfo is not None:
+                received_at = received_at.astimezone(timezone.utc).replace(tzinfo=None)
+        except Exception:
+            received_at = None
 
     # -------- SPAM CHECK --------
     if not ai_parser.is_not_spam(
@@ -79,6 +94,11 @@ async def process_fuchs_message(msg_dict: dict) -> str:
 
         for item in valid_items:
             item.email_message_id = message_id
+            # FUCHS: фиксируем дату начала действия цены и срок
+            if received_at:
+                item.valid_from = received_at
+            if getattr(item, "valid_days", None) is None:
+                item.valid_days = 90
             await price_service.update_or_create(session, item)
 
         await session.commit()
