@@ -4,6 +4,7 @@ from typing import Annotated
 
 from src.db.initialize import get_db
 from src.db.models.user_model import UserModel
+from src.repositories.user_repo import UserRepository
 from src.services.offer_service import OfferService
 from src.core.auth import get_tg_user, get_tg_user_or_admin
 from src.worker.tasks import generate_offer_pdf_task
@@ -96,6 +97,33 @@ async def get_offer(
 ):
     service = OfferService(db)
     return await service.get_offer_with_items(offer_id)
+
+
+@router.get("/history/me")
+async def get_my_offer_history(
+    db: AsyncSession = Depends(get_db),
+    user: UserModel = Depends(get_tg_user_or_admin),
+    tg_id: int | None = None,
+):
+    """
+    История КП для профиля.
+
+    - Если запрос авторизован через Telegram (X-Telegram-Init-Data) — используем current user.
+    - Если запрос авторизован через admin token — можно передать tg_id, чтобы получить историю
+      конкретного пользователя (потому что admin token не знает 'кто я' в Telegram).
+    """
+    # admin token case: user может быть системным, поэтому позволяем явный tg_id
+    if tg_id is not None and user.tg_id is None:
+        repo = UserRepository(db)
+        target_user = await repo.get_by_tg_id(tg_id)
+        if not target_user:
+            raise HTTPException(status_code=404, detail=f"User with tg_id={tg_id} not found")
+        target_user_id = target_user.id
+    else:
+        target_user_id = user.id
+
+    service = OfferService(db)
+    return await service.get_user_offers(target_user_id)
 
 
 @router.get("/by-deal/{deal_id}")
