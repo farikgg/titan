@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Request, Header
+from fastapi import APIRouter, Depends, HTTPException, Request, Header, UploadFile, File
 from typing import Annotated
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -528,6 +528,60 @@ async def attach_kp_to_deal(
     return {
         "deal_id": deal_id,
         "offer_id": body.offer_id,
+        "attached": True,
+    }
+
+
+@router.post(
+    "/{deal_id}/attach-kp-upload",
+    dependencies=[Depends(require_permission("deals.write")), Depends(verify_user_or_admin_token)],
+    summary="Прикрепить PDF КП к сделке из загруженного файла",
+)
+async def attach_kp_to_deal_upload(
+    deal_id: int,
+    file: UploadFile = File(...),
+    user=Depends(get_tg_user_or_admin),
+):
+    """
+    Ручное прикрепление КП из файла, загруженного пользователем (ПК / ноут).
+
+    Использование:
+      - фронт отправляет multipart/form-data с полем `file` (PDF),
+      - бекенд сохраняет файл во временную директорию и прикрепляет его к сделке
+        в Bitrix24 через BitrixService.attach_kp_pdf.
+
+    Ограничения:
+      - принимаем только `application/pdf`.
+    """
+    if file.content_type not in ("application/pdf", "application/x-pdf"):
+        raise HTTPException(
+            status_code=400,
+            detail="Только PDF файлы поддерживаются",
+        )
+
+    # 1. Сохраняем загруженный файл во временный путь в media/
+    media_dir = Path("/app/media")
+    media_dir.mkdir(parents=True, exist_ok=True)
+
+    safe_name = f"manual_kp_deal_{deal_id}_{file.filename or 'kp'}.pdf"
+    saved_path = media_dir / safe_name
+
+    content = await file.read()
+    saved_path.write_bytes(content)
+
+    # 2. Прикрепляем к сделке через BitrixService
+    bitrix = _get_bitrix_service()
+    ok = await bitrix.attach_kp_pdf(deal_id=deal_id, pdf_path=saved_path)
+
+    if not ok:
+        raise HTTPException(
+            status_code=502,
+            detail="Failed to attach uploaded PDF to deal in Bitrix24",
+        )
+
+    return {
+        "deal_id": deal_id,
+        "filename": file.filename,
         "attached": True,
     }
 
