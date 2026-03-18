@@ -21,13 +21,17 @@ class OfferService:
     # --------------------------------------------------
 
     async def get_or_create_draft(self, user_id: int) -> OfferModel:
+        # Ищем существующий черновик для пользователя.
+        # Раньше здесь использовался scalar_one_or_none(), что падало с MultipleResultsFound,
+        # если по каким‑то причинам накопилось несколько черновиков.
+        # Теперь безопасно берём первый найденный (самый старый) через .scalars().first().
         result = await self.db.execute(
             select(OfferModel).where(
                 OfferModel.user_id == user_id,
                 OfferModel.status == OfferStatus.DRAFT,
             )
         )
-        offer = result.scalar_one_or_none()
+        offer = result.scalars().first()
 
         if offer:
             return offer
