@@ -66,7 +66,7 @@ async def list_users(
 async def search_users(
     q: str,
     limit: int = 20,
-    user_service: UserServiceDep = Depends(),
+    user_service: UserServiceDep,
     _: UserModel = Depends(get_tg_user_or_admin),
 ):
     """
