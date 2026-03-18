@@ -65,8 +65,8 @@ async def list_users(
 @router.get("/search", response_model=list[UserRead])
 async def search_users(
     q: str,
-    limit: int = 20,
     user_service: UserServiceDep,
+    limit: int = 20,
     _: UserModel = Depends(get_tg_user_or_admin),
 ):
     """
