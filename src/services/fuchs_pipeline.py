@@ -84,38 +84,39 @@ async def process_fuchs_message(msg_dict: dict) -> str:
         await session.commit()
 
     # -------- СОЗДАНИЕ СДЕЛКИ В BITRIX24 (воронка Гидротех) --------
-    deal_id = None
-    try:
-        bx = get_bitrix_client()
-        deal_service = DealService(BitrixService(bx))
+    # deal_id = None
+    # try:
+    #     bx = get_bitrix_client()
+    #     deal_service = DealService(BitrixService(bx))
 
-        deal_id = await deal_service.create_deal_from_email(
-            subject=msg_dict.get("subject", ""),
-            sender=msg_dict.get("from", "FUCHS"),
-            assigned_by_id=DEFAULT_ASSIGNED_BY_ID,
-            parsed_items=[
-                {
-                    "art": item.art,
-                    "name": item.name,
-                    "price": float(item.price) if item.price else 0,
-                    "currency": item.currency or "EUR",
-                    "quantity": 1,
-                }
-                for item in valid_items
-            ],
-            message_id=message_id,
-        )
-    except Exception:
-        logger.exception("Ошибка создания сделки в Bitrix24 из письма FUCHS")
+    #     deal_id = await deal_service.create_deal_from_email(
+    #         subject=msg_dict.get("subject", ""),
+    #         sender=msg_dict.get("from", "FUCHS"),
+    #         assigned_by_id=DEFAULT_ASSIGNED_BY_ID,
+    #         parsed_items=[
+    #             {
+    #                 "art": item.art,
+    #                 "name": item.name,
+    #                 "price": float(item.price) if item.price else 0,
+    #                 "currency": item.currency or "EUR",
+    #                 "quantity": 1,
+    #             }
+    #             for item in valid_items
+    #         ],
+    #         message_id=message_id,
+    #     )
+    # except Exception:
+    #     logger.exception("Ошибка создания сделки в Bitrix24 из письма FUCHS")
 
     # -------- TELEGRAM NOTIFICATION --------
     subject = msg_dict.get("subject") or "Без темы"
     items_count = len(valid_items)
 
-    if deal_id:
-        deal_text = f"🏢 ID сделки в Битрикс24: #{deal_id}"
-    else:
-        deal_text = "⚠️ Сделка в Битрикс24 не создана"
+    # if deal_id:
+    #     deal_text = f"🏢 ID сделки в Битрикс24: #{deal_id}"
+    # else:
+    #     deal_text = "⚠️ Сделка в Битрикс24 не создана"
+    deal_text = "ℹ️ Сделка в Bitrix24 не создавалась (обновлён только прайс)"
 
     text = (
         "📧 Обработано письмо FUCHS\n"
@@ -128,5 +129,5 @@ async def process_fuchs_message(msg_dict: dict) -> str:
     for chat_id in get_admin_chat_ids():
         await tg.send_message(chat_id=chat_id, text=text)
 
-    return f"Saved: {len(valid_items)}, deal: {deal_id}"
-
+    # return f"Saved: {len(valid_items)}, deal: {deal_id}"
+    return f"Saved: {len(valid_items)}, deal: None"
