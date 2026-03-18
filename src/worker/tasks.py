@@ -16,6 +16,8 @@ from src.services.fuchs_pipeline import process_fuchs_message
 from src.services.requests_pipeline import process_requests_message
 from src.integrations.azure.outlook_client import OutlookClient
 from src.core.graph_auth import GraphAuth
+from src.services.telegram_service import TelegramService, get_admin_chat_ids
+from src.services.fuchs_price_report_service import FuchsPriceReportService
 
 logger = logging.getLogger(__name__)
 
@@ -296,6 +298,43 @@ def requests_process(self, msg_dict):
                     processing.status = "FAILED"
                     await session.commit()
             raise e
+
+    return run_async(_inner())
+
+
+@app.task(
+    bind=True,
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    max_retries=3,
+    name="src.worker.tasks.send_fuchs_price_expiry_report",
+)
+def send_fuchs_price_expiry_report(self):
+    """
+    Формирует Excel-отчёт по ценам FUCHS (просроченные/скоро истекают)
+    и отправляет одним сообщением + файлом в админские Telegram-чаты.
+    """
+
+    async def _inner():
+        tg = TelegramService()
+        report_service = FuchsPriceReportService(expiring_days_threshold=7)
+
+        async with async_session() as session:
+            out_path = await report_service.build_report_xlsx(
+                session, output_dir=Path("/app/media/reports")
+            )
+
+        text = (
+            "📊 Отчёт по срокам действия цен FUCHS\n"
+            f"Файл: {out_path.name}\n"
+            "Листы: expired / expiring_soon / all"
+        )
+
+        for chat_id in get_admin_chat_ids():
+            await tg.send_message(chat_id=chat_id, text=text)
+            await tg.send_document(chat_id=chat_id, file_path=out_path, caption=out_path.name)
+
+        return str(out_path)
 
     return run_async(_inner())
 

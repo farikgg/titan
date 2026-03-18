@@ -40,6 +40,11 @@ app.conf.beat_schedule = {
         'task': 'src.worker.tasks.parse_from_requests',
         'schedule': crontab(minute=0),  # Каждый час в 00 минут (например, 10:00, 11:00, 12:00...)
     },
+    # Каждый день в 09:00 по Asia/Almaty — отчёт по просроченным/истекающим ценам FUCHS
+    'fuchs_price_expiry_report_daily': {
+        'task': 'src.worker.tasks.send_fuchs_price_expiry_report',
+        'schedule': crontab(hour=9, minute=0),
+    },
 }
 
 app.conf.task_routes = {
@@ -52,6 +57,7 @@ app.conf.task_routes = {
     'src.worker.tasks.sync_skf_single': {'queue': 'default'},
     'src.worker.tasks.process_deal_update': {'queue': 'default'},
     'src.worker.tasks.sync_skf_bulk': {'queue': 'default'},
+    'src.worker.tasks.send_fuchs_price_expiry_report': {'queue': 'default'},
 }
 
 # app.conf.worker_pool = "solo" # убрать на проде
