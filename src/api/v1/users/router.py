@@ -9,6 +9,7 @@ from src.db.initialize import get_db
 from src.schemas.price_schema import PriceRead
 from src.services.price_service import PriceService
 from src.core.auth import require_admin
+from src.core.enums import Role
 
 router = APIRouter( prefix='/users',
                      tags=["Users"] )
@@ -87,8 +88,19 @@ async def get_by_id(id: int, user_service: UserServiceDep):
 
 
 @router.patch('/update/{id}', status_code=status.HTTP_200_OK)
-async def update(id: int, data: UserUpdate, user_service: UserServiceDep):
-    user = await user_service.update_user_fields(id, data.model_dump())
+async def update(
+    id: int,
+    data: UserUpdate,
+    user_service: UserServiceDep,
+    current_user: UserModel = Depends(get_tg_user_or_admin),
+):
+    if current_user.role != Role.admin.value:
+        raise HTTPException(status_code=403, detail="Need admin access")
+
+    user = await user_service.update_user_fields(
+        id,
+        data.model_dump(exclude_none=True),
+    )
     return {"id": user.id, "details": "User updated successfully"}
 
 

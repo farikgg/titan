@@ -11,6 +11,7 @@ from src.worker.tasks import generate_offer_pdf_task
 from src.app.config import settings
 from src.core.bitrix import get_bitrix_client
 from src.services.bitrix_service import BitrixService
+from src.core.enums import Role
 
 router = APIRouter(prefix="/offers", tags=["Offers"])
 
@@ -162,6 +163,8 @@ from pydantic import BaseModel
 class OfferConvertRequest(BaseModel):
     company_id: int | None = None
     contact_id: int | None = None
+    assigned_by_id: int | None = None  # Bitrix user id (ответственный)
+    currency: str | None = None  # Валюта КП
 
 
 class UpdateOfferTermsRequest(BaseModel):
@@ -211,9 +214,20 @@ async def convert(
         if body.contact_id is not None:
             kwargs["contact_id"] = body.contact_id
 
+    # Валюта: чтобы сделка получила выбранную валюту
+    if body and body.currency:
+        await service.update_terms(offer_id, currency=body.currency)
+
+    # Ответственный: менеджер может выбрать только себя, руководитель/админ — любого
+    assigned_by_id = user.bitrix_user_id
+    if body and body.assigned_by_id is not None:
+        if user.role == Role.manager.value and body.assigned_by_id != user.bitrix_user_id:
+            raise HTTPException(status_code=403, detail="Managers can assign only themselves")
+        assigned_by_id = body.assigned_by_id
+
     deal_id = await service.convert_to_bitrix(
         offer_id=offer_id,
-        assigned_by_id=user.bitrix_user_id,
+        assigned_by_id=assigned_by_id,
         **kwargs,
     )
     await db.commit()

@@ -30,5 +30,6 @@ class PriceRead(PriceBase):
     updated_at: datetime
     valid_to: Optional[datetime] = None
     validity_status: Optional[str] = None
+    days_left: Optional[int] = None
 
     model_config = ConfigDict(from_attributes=True)

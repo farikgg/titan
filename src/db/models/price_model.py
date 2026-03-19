@@ -72,6 +72,22 @@ class PriceModel(Base):
             return "expiring_soon"
         return "valid"
 
+    @property
+    def days_left(self) -> int | None:
+        """
+        Сколько дней осталось до истечения valid_to.
+        Если нет valid_from — возвращаем None.
+        """
+        if not self.valid_from:
+            return None
+        vt = self.valid_to
+        if not vt:
+            return None
+        now = datetime.utcnow()
+        if now > vt:
+            return 0
+        return (vt - now).days
+
 class EmailProcessing(Base):
     __tablename__ = "email_processing"
 
