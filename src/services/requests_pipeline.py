@@ -32,38 +32,108 @@ logger = logging.getLogger(__name__)
 DEFAULT_ASSIGNED_BY_ID = 109
 
 
-async def extract_client_info(subject: str, body: str, sender: str) -> dict:
+async def extract_client_info(
+    subject: str, 
+    body: str, 
+    sender: str,
+    to_recipients: list | None = None,
+    parsed_items: list | None = None,
+) -> dict:
     """
-    Извлекает информацию о клиенте из письма с помощью AI.
+    Извлекает информацию о клиенте и менеджере из письма с помощью AI.
+    
+    Args:
+        subject: Тема письма
+        body: Текст письма
+        sender: Email отправителя
+        to_recipients: Список получателей (кому пишет клиент) - опционально
+        parsed_items: Список товаров из письма - опционально (для контекста)
     
     Returns:
         {
             "company_name": str | None,
-            "contact_name": str | None,
+            "contact_name": str | None,  # Имя клиента, который запрашивает
             "contact_email": str | None,
             "contact_phone": str | None,
+            "manager_name": str | None,  # Имя менеджера, кому пишет клиент
+            "manager_email": str | None,  # Email менеджера
         }
     """
     ai_parser = FuchsAIParser()
     
+    # Формируем информацию о получателях
+    to_info = ""
+    if to_recipients:
+        to_emails = []
+        to_names = []
+        for recipient in to_recipients:
+            if isinstance(recipient, dict):
+                email_addr = recipient.get("emailAddress", {})
+                email = email_addr.get("address", "")
+                name = email_addr.get("name", "")
+                if email:
+                    to_emails.append(email)
+                if name:
+                    to_names.append(name)
+            elif isinstance(recipient, str):
+                to_emails.append(recipient)
+        if to_emails or to_names:
+            to_info = f"\nПолучатели письма (кому пишет клиент):\n"
+            if to_names:
+                to_info += f"Имена: {', '.join(to_names)}\n"
+            if to_emails:
+                to_info += f"Email: {', '.join(to_emails)}\n"
+    
+    # Формируем информацию о товарах (для контекста)
+    items_info = ""
+    if parsed_items:
+        items_summary = []
+        for item in parsed_items[:10]:  # Ограничиваем до 10 товаров
+            art = item.get("art", "") or item.get("sku", "")
+            name = item.get("name", "")
+            qty = item.get("quantity", 1)
+            if art:
+                items_summary.append(f"- {art} ({name or 'без названия'}) x{qty}")
+        if items_summary:
+            items_info = f"\nЗапрашиваемые товары:\n" + "\n".join(items_summary)
+    
     # Формируем промпт для LLM
-    body_limited = body[:2000] if body else ""  # Ограничиваем длину
-    prompt = f"""
-Извлеки информацию о клиенте из следующего письма:
+    body_limited = body[:3000] if body else ""  # Увеличиваем лимит для лучшего контекста
+    prompt = f"""Ты анализируешь письмо от клиента, который запрашивает товары у менеджера компании.
 
+ВАЖНО: Различай:
+- КЛИЕНТ (отправитель письма) - тот, кто запрашивает товары
+- МЕНЕДЖЕР (получатель письма) - сотрудник компании, кому пишет клиент
+
+Данные письма:
 Тема: {subject}
-Отправитель: {sender}
+Отправитель (клиент): {sender}
+{to_info}
+{items_info}
+
 Текст письма:
 {body_limited}
 
-Верни JSON с полями:
-- company_name: название компании (если есть)
-- contact_name: ФИО контактного лица (если есть)
-- contact_email: email контакта (если есть)
-- contact_phone: телефон контакта (если есть)
+Извлеки и верни JSON со следующими полями:
 
-Если информации нет, верни null для соответствующего поля.
-"""
+1. КЛИЕНТ (тот, кто запрашивает):
+   - contact_name: полное ФИО клиента (из подписи, текста письма, или имени отправителя)
+   - company_name: название компании клиента (если упоминается)
+   - contact_email: email клиента (обычно это отправитель {sender}, но проверь в тексте)
+   - contact_phone: телефон клиента (мобильный, рабочий - любой найденный)
+
+2. МЕНЕДЖЕР (кому пишет клиент):
+   - manager_name: имя/ФИО менеджера (из текста "Уважаемый Иван", "Добрый день, Петр", или из подписи получателя)
+   - manager_email: email менеджера (из списка получателей или упоминаний в тексте)
+
+ПРАВИЛА ИЗВЛЕЧЕНИЯ:
+- Если в тексте есть обращение "Уважаемый Иван" или "Добрый день, Петр" - это manager_name
+- Если есть подпись с именем в конце письма - это может быть contact_name (клиент) или manager_name (если это ответ)
+- Телефон ищи в форматах: +7..., 8..., (7...), и т.д.
+- Компанию клиента ищи в подписи или в начале письма
+- Если информации нет - верни null для соответствующего поля
+
+Верни ТОЛЬКО валидный JSON без дополнительных комментариев."""
 
     try:
         # Используем LLM для извлечения структурированных данных
@@ -72,31 +142,44 @@ async def extract_client_info(subject: str, body: str, sender: str) -> dict:
             messages=[
                 {
                     "role": "system",
-                    "content": "Ты помощник для извлечения структурированной информации о клиентах из писем. Отвечай только валидным JSON.",
+                    "content": (
+                        "Ты эксперт по анализу деловой переписки. "
+                        "Твоя задача - точно определить, кто клиент (запрашивает товары), "
+                        "а кто менеджер (получает запрос). "
+                        "Извлекай структурированную информацию: имена, компании, контакты. "
+                        "Отвечай ТОЛЬКО валидным JSON без дополнительного текста."
+                    ),
                 },
                 {"role": "user", "content": prompt},
             ],
             response_format={"type": "json_object"},
-            temperature=0.3,
+            temperature=0.2,  # Снижаем температуру для более точного извлечения
         )
 
         import json
         result = json.loads(response.choices[0].message.content)
         
+        # Fallback: если email клиента не найден, используем отправителя
+        contact_email = result.get("contact_email") or sender
+        
         return {
             "company_name": result.get("company_name"),
             "contact_name": result.get("contact_name"),
-            "contact_email": result.get("contact_email") or sender,  # Fallback на отправителя
+            "contact_email": contact_email,
             "contact_phone": result.get("contact_phone"),
+            "manager_name": result.get("manager_name"),
+            "manager_email": result.get("manager_email"),
         }
     except Exception:
         logger.exception("Ошибка извлечения данных клиента через AI")
-        # Fallback: используем отправителя как email
+        # Fallback: используем отправителя как email клиента
         return {
             "company_name": None,
             "contact_name": None,
             "contact_email": sender,
             "contact_phone": None,
+            "manager_name": None,
+            "manager_email": None,
         }
 
 
@@ -278,12 +361,34 @@ async def process_requests_message(msg_dict: dict) -> str:
             }
         )
 
-    # -------- 3. ИЗВЛЕЧЕНИЕ ДАННЫХ КЛИЕНТА (AI) --------
-    client_info = await extract_client_info(subject, body, sender)
+    # -------- 3. ИЗВЛЕЧЕНИЕ ДАННЫХ КЛИЕНТА И МЕНЕДЖЕРА (AI) --------
+    # Получаем список получателей из письма (кому пишет клиент)
+    to_recipients = msg_dict.get("toRecipients") or []
+    
+    client_info = await extract_client_info(
+        subject=subject,
+        body=body,
+        sender=sender,
+        to_recipients=to_recipients,
+        parsed_items=parsed_items,  # Передаём товары для контекста
+    )
     company_name = client_info.get("company_name")
     contact_name = client_info.get("contact_name")
     contact_email = client_info.get("contact_email")
     contact_phone = client_info.get("contact_phone")
+    manager_name = client_info.get("manager_name")
+    manager_email = client_info.get("manager_email")
+    
+    # Логируем извлечённую информацию
+    logger.info(
+        "Извлечена информация из письма requests@...: "
+        "клиент=%s, компания=%s, телефон=%s, менеджер=%s, email_менеджера=%s",
+        contact_name or "не указан",
+        company_name or "не указана",
+        contact_phone or "не указан",
+        manager_name or "не указан",
+        manager_email or "не указан",
+    )
 
     # -------- 4. ПОИСК/СОЗДАНИЕ КОМПАНИИ И КОНТАКТА В BITRIX --------
     bx = get_bitrix_client()
@@ -351,18 +456,56 @@ async def process_requests_message(msg_dict: dict) -> str:
     found_count = sum(1 for item in items_with_status if item.get("found"))
     not_found_count = len(items_with_status) - found_count
 
-    deal_text = f"🏢 ID сделки в Битрикс24: #{deal_id}"
+    # Формируем информацию о клиенте
+    client_info_text = ""
+    if contact_name:
+        client_info_text += f"👤 Клиент: {contact_name}\n"
     if company_name:
-        deal_text += f"\n🏢 Компания: {company_name}"
+        client_info_text += f"🏢 Компания: {company_name}\n"
+    if contact_phone:
+        client_info_text += f"📞 Телефон: {contact_phone}\n"
+    if contact_email and contact_email != sender:
+        client_info_text += f"📧 Email: {contact_email}\n"
+    
+    # Формируем информацию о менеджере
+    manager_info_text = ""
+    if manager_name:
+        manager_info_text += f"👔 Менеджер: {manager_name}\n"
+    if manager_email:
+        manager_info_text += f"📧 Email менеджера: {manager_email}\n"
+    elif not manager_name:
+        # Если менеджер не определён, но есть получатели
+        if to_recipients:
+            manager_emails = []
+            for recipient in to_recipients:
+                if isinstance(recipient, dict):
+                    email = recipient.get("emailAddress", {}).get("address", "")
+                    if email:
+                        manager_emails.append(email)
+                elif isinstance(recipient, str):
+                    manager_emails.append(recipient)
+            if manager_emails:
+                manager_info_text += f"📧 Получатель: {', '.join(manager_emails)}\n"
+
+    deal_text = f"🏢 ID сделки в Битрикс24: #{deal_id}"
 
     text = (
         "📧 Обработано письмо из requests@...\n"
         f"Тема: {subject}\n"
         f"От: {sender}\n"
-        f"Товаров спарсено: {len(items_with_status)}\n"
+    )
+    
+    if client_info_text:
+        text += f"\n{client_info_text}"
+    
+    if manager_info_text:
+        text += f"\n{manager_info_text}"
+    
+    text += (
+        f"\n📦 Товаров спарсено: {len(items_with_status)}\n"
         f"✅ Найдено в прайсах: {found_count}\n"
         f"❌ Не найдено: {not_found_count}\n"
-        f"{deal_text}"
+        f"\n{deal_text}"
     )
 
     # Шлём уведомление всем админам
