@@ -4,6 +4,7 @@ from typing import List, Dict, Optional
 from anyio import to_thread
 from pathlib import Path
 from fast_bitrix24 import Bitrix
+from fast_bitrix24.server_response import ErrorInServerResponseException
 import httpx
 
 from src.app.config import BITRIX_STAGES, settings
@@ -176,6 +177,25 @@ class BitrixService:
 
             logger.debug("Bitrix: get_deal(%s) → ID=%s", deal_id, result.get("ID"))
             return result
+        except ErrorInServerResponseException as e:
+            # Проверяем, это "Access denied" или "Not found"
+            error_info = str(e)
+            if "Access denied" in error_info or "access denied" in error_info.lower():
+                logger.error(
+                    "Bitrix: ACCESS DENIED при получении сделки %s. "
+                    "Проверьте права пользователя/токена Bitrix на эту сделку. Ошибка: %s",
+                    deal_id,
+                    error_info,
+                )
+            elif "Not found" in error_info or "not found" in error_info.lower():
+                logger.warning("Bitrix: сделка %s не найдена", deal_id)
+            else:
+                logger.error(
+                    "Bitrix: ошибка получения сделки %s (ErrorInServerResponseException): %s",
+                    deal_id,
+                    error_info,
+                )
+            return None
         except Exception:
             logger.exception("Bitrix: ошибка получения сделки %s", deal_id)
             return None
@@ -329,6 +349,27 @@ class BitrixService:
             )
             logger.info("Bitrix: сделка %s обновлена, fields=%s", deal_id, list(fields.keys()))
             return True
+        except ErrorInServerResponseException as e:
+            # Проверяем, это "Access denied" или "Not found"
+            error_info = str(e)
+            if "Access denied" in error_info or "access denied" in error_info.lower():
+                logger.error(
+                    "Bitrix: ACCESS DENIED при обновлении сделки %s. "
+                    "Проверьте права пользователя/токена Bitrix на эту сделку. "
+                    "Поля: %s. Ошибка: %s",
+                    deal_id,
+                    list(fields.keys()),
+                    error_info,
+                )
+            elif "Not found" in error_info or "not found" in error_info.lower():
+                logger.warning("Bitrix: сделка %s не найдена для обновления", deal_id)
+            else:
+                logger.error(
+                    "Bitrix: ошибка обновления сделки %s (ErrorInServerResponseException): %s",
+                    deal_id,
+                    error_info,
+                )
+            return False
         except Exception:
             logger.exception("Bitrix: ошибка обновления сделки %s", deal_id)
             return False
@@ -341,7 +382,11 @@ class BitrixService:
         """
         deal = await self.get_deal(deal_id)
         if not deal:
-            logger.error("Bitrix: сделка %s не найдена для смены стадии", deal_id)
+            logger.error(
+                "Bitrix: сделка %s недоступна для смены стадии "
+                "(не найдена или нет доступа - проверьте логи выше)",
+                deal_id,
+            )
             return False
 
         current_stage = deal.get("STAGE_ID")
@@ -385,6 +430,27 @@ class BitrixService:
             )
             logger.info("Bitrix: товары сделки %s установлены (%d шт.)", deal_id, len(products))
             return True
+        except ErrorInServerResponseException as e:
+            # Проверяем, это "Access denied" или "Not found"
+            error_info = str(e)
+            if "Access denied" in error_info or "access denied" in error_info.lower():
+                logger.error(
+                    "Bitrix: ACCESS DENIED при установке товаров для сделки %s. "
+                    "Проверьте права пользователя/токена Bitrix на эту сделку. "
+                    "Товаров: %d. Ошибка: %s",
+                    deal_id,
+                    len(products),
+                    error_info,
+                )
+            elif "Not found" in error_info or "not found" in error_info.lower():
+                logger.warning("Bitrix: сделка %s не найдена для установки товаров", deal_id)
+            else:
+                logger.error(
+                    "Bitrix: ошибка установки товаров для сделки %s (ErrorInServerResponseException): %s",
+                    deal_id,
+                    error_info,
+                )
+            return False
         except Exception:
             logger.exception(
                 "Bitrix: ошибка установки товаров для сделки %s", deal_id
