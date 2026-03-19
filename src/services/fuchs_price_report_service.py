@@ -43,6 +43,9 @@ class FuchsPriceReportService:
                     "first_seen_at": p.first_seen_at,
                     "valid_from": p.valid_from,
                     "valid_days": p.valid_days,
+                    # Остаток дней до конца действия цены.
+                    # Это то, что пользователи обычно ожидают видеть как "сроки".
+                    "days_left": p.days_left,
                     "valid_to": valid_to,
                     "status": status,
                     "email_message_id": p.email_message_id,
