@@ -221,16 +221,16 @@ async def telegram_webhook(update: dict):
                     return await tg.edit_message(
                         chat_id,
                         message_id,
-                        f"🏢 Сделка создана в воронке Гидротех\n"
-                        f"ID: {deal_id}\n"
-                        f"Стадия: Подготовка КП",
-                        {
-                            "inline_keyboard": [
-                                [{"text": "📄 Создать PDF", "callback_data": "generate"}],
-                                [{"text": "⬅ Назад", "callback_data": "menu:main"}],
-                            ]
-                        },
-                    )
+                            f"🏢 Сделка создана в воронке Гидротех\n"
+                            f"ID: {deal_id}\n"
+                            f"Стадия: Подготовка КП",
+                            {
+                                "inline_keyboard": [
+                                    [{"text": "📄 Создать PDF", "callback_data": "generate"}],
+                                    [{"text": "⬅ Назад", "callback_data": "menu:main"}],
+                                ]
+                            },
+                        )
                 except ValueError as e:
                     return await tg.edit_message(
                         chat_id,

@@ -238,7 +238,7 @@ class DealService:
         if not deal:
             logger.warning("DealService: сделка %s не найдена в Bitrix", deal_id)
             return None
-        
+
         # Дополнительная проверка: убеждаемся, что deal - это словарь с нужными ключами
         if not isinstance(deal, dict):
             logger.error(

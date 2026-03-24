@@ -484,13 +484,13 @@ async def _generate_offer_pdf(offer_id: int, chat_id: int | None):
             # Если нет chat_id (админский вызов) — просто выходим тихо
             if chat_id:
                 await tg.send_message(chat_id, "❌ Offer не найден")
-            return
+                return
 
         # БЛОКИРОВКА ОТ ДУБЛЕЙ
         if offer.is_generating:
             if chat_id:
                 await tg.send_message(chat_id, "⏳ PDF уже генерируется...")
-            return
+                return
 
         offer.is_generating = True
         await session.commit()
@@ -499,10 +499,10 @@ async def _generate_offer_pdf(offer_id: int, chat_id: int | None):
     message_id = None
     if chat_id:
         progress = await tg.send_message(chat_id, "🧾 Генерирую PDF...")
-        if not progress or not progress.get("result"):
-            logger.error("Не удалось получить message_id %s", progress)
-            return
-        message_id = progress["result"]["message_id"]
+    if not progress or not progress.get("result"):
+        logger.error("Не удалось получить message_id %s", progress)
+        return
+    message_id = progress["result"]["message_id"]
 
     try:
 

@@ -23,3 +23,5 @@ class UserRead(UserBase):
 class UserUpdate(BaseModel):
     username: Optional[str] = None
     role: Optional[Role] = None
+    tg_id: Optional[int] = None
+    bitrix_user_id: Optional[int] = None
