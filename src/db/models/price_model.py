@@ -1,5 +1,6 @@
 import enum
-from datetime import datetime, timedelta
+import math
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 from sqlalchemy.orm import Mapped, mapped_column
@@ -62,14 +63,28 @@ class PriceModel(Base):
         """
         if not self.valid_from:
             return "unknown"
+
         vt = self.valid_to
         if not vt:
             return "unknown"
-        now = datetime.utcnow()
-        if now > vt:
+
+        # Мы храним valid_from как naive UTC (см. pipeline),
+        # но на всякий случай нормализуем.
+        valid_from = self.valid_from
+        if valid_from.tzinfo is not None:
+            valid_from = valid_from.astimezone(timezone.utc).replace(tzinfo=None)
+            vt = valid_from + timedelta(days=int(self.valid_days or 90))
+
+        now = datetime.utcnow()  # naive UTC
+        delta_seconds = (vt - now).total_seconds()
+
+        if delta_seconds <= 0:
             return "expired"
-        if (vt - now).days <= 7:
+
+        # <= 7 календарных суток до окончания (не используем .days, чтобы не смещать порог на ~1 день).
+        if delta_seconds <= 7 * 86400:
             return "expiring_soon"
+
         return "valid"
 
     @property
@@ -80,13 +95,25 @@ class PriceModel(Base):
         """
         if not self.valid_from:
             return None
+
         vt = self.valid_to
         if not vt:
             return None
-        now = datetime.utcnow()
-        if now > vt:
+
+        valid_from = self.valid_from
+        if valid_from.tzinfo is not None:
+            valid_from = valid_from.astimezone(timezone.utc).replace(tzinfo=None)
+            vt = valid_from + timedelta(days=int(self.valid_days or 90))
+
+        now = datetime.utcnow()  # naive UTC
+        delta_seconds = (vt - now).total_seconds()
+
+        if delta_seconds <= 0:
             return 0
-        return (vt - now).days
+
+        # Округляем "вверх", чтобы ожидание пользователя (сколько дней осталось)
+        # совпадало с календарным представлением, а не со floor из .days.
+        return max(0, int(math.ceil(delta_seconds / 86400)))
 
 class EmailProcessing(Base):
     __tablename__ = "email_processing"

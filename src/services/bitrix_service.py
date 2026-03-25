@@ -807,6 +807,10 @@ class BitrixService:
             raw = data.get("result", [])
             comments: List[Dict] = raw if isinstance(raw, list) else []
 
+            # Сортируем по времени создания, чтобы UI/ТМА стабильно показывали новые сообщения сверху.
+            # В Bitrix обычно поле CREАTED в ISO-формате, по нему можно сортировать лексикографически.
+            comments.sort(key=lambda c: c.get("CREATED") or c.get("DATE_CREATE") or "", reverse=True)
+
             # Ограничиваем количество
             if limit and len(comments) > limit:
                 comments = comments[:limit]

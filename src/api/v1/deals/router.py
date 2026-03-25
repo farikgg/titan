@@ -693,3 +693,36 @@ async def get_deal_comments(
         "comments": comments,
         "total": len(comments),
     }
+
+
+# ──────────────────────────────────────────────
+#  Алиасы для встроенного чата в UI
+# ──────────────────────────────────────────────
+
+
+@router.get(
+    "/{deal_id}/chat/messages",
+    dependencies=[Depends(verify_user_or_admin_token)],
+    summary="Получить сообщения встроенного чата сделки (Bitrix timeline)",
+)
+async def get_deal_chat_messages(
+    deal_id: int,
+    limit: int = 50,
+    user=Depends(get_tg_user_or_admin),
+):
+    # Вся логика получения уже реализована в get_deal_comments,
+    # здесь просто удобный алиас под фронт.
+    return await get_deal_comments(deal_id=deal_id, limit=limit, user=user)  # type: ignore[misc]
+
+
+@router.post(
+    "/{deal_id}/chat/messages",
+    dependencies=[Depends(verify_user_or_admin_token)],
+    summary="Отправить сообщение встроенного чата сделки (Bitrix timeline)",
+)
+async def send_deal_chat_message(
+    deal_id: int,
+    body: AddCommentRequest,
+    user=Depends(get_tg_user_or_admin),
+):
+    return await add_deal_comment(deal_id=deal_id, body=body, user=user)  # type: ignore[misc]
