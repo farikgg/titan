@@ -608,6 +608,45 @@ class BitrixService:
             logger.exception("Bitrix: ошибка поиска компаний по запросу '%s'", query)
             return []
 
+    async def search_users(self, name_query: str | None = None, email_query: str | None = None) -> List[Dict]:
+        """
+        Поиск пользователей в Bitrix24 по ФИО или Email.
+        """
+        from anyio import to_thread
+
+        try:
+            filter_dict = {}
+            if email_query:
+                filter_dict["EMAIL"] = email_query
+            elif name_query:
+                filter_dict["NAME"] = name_query
+            else:
+                return []
+
+            result = await to_thread.run_sync(
+                self.bx.get_all,
+                "user.get",
+                {
+                    "filter": filter_dict,
+                },
+            )
+
+            users = list(result) if result else []
+            logger.info(
+                "Bitrix: найдено %d пользователей по запросу (email='%s', name='%s')",
+                len(users),
+                email_query,
+                name_query,
+            )
+            return users
+        except Exception:
+            logger.exception(
+                "Bitrix: ошибка поиска пользователей по запросу (email='%s', name='%s')",
+                email_query,
+                name_query,
+            )
+            return []
+
     # ──────────────────────────────────────────────
     #  Контакты
     # ──────────────────────────────────────────────

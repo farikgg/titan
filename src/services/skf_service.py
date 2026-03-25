@@ -50,7 +50,7 @@ class SKFService:
                 data = resp.json()
 
                 if data.get("message"):
-                    logger.error("SKF API error", extra={"sku": sku, "msg": data["message"]})
+                    logger.error("SKF API error", extra={"sku": sku, "api_msg": data["message"]})
                     return None
 
                 price = data.get("QuantityBasedPrice")

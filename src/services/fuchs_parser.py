@@ -2,7 +2,8 @@ import json, logging, pdfplumber, pytesseract, os, pandas as pd
 from json import JSONDecodeError
 
 from io import BytesIO
-from groq import AsyncGroq
+from google import genai
+from google.genai import types
 from PIL import Image, ImageOps
 from pytesseract import TesseractNotFoundError
 
@@ -11,12 +12,60 @@ from src.schemas.price_schema import PriceCreate
 
 logger = logging.getLogger(__name__)
 
+# ── System instruction (роль + правила) — отделяем от данных ──
+SYSTEM_INSTRUCTION = """
+Ты — senior аналитик закупок и ценообразования в промышленной компании.
+
+КОНТЕКСТ:
+Это коммерческое предложение (quotation) от поставщика FUCHS.
+Если валюта не указана явно — считай, что валюта EUR.
+
+ЗАДАЧА:
+Извлечь ТОЛЬКО товарные позиции.
+
+ОБЯЗАТЕЛЬНЫЕ ПОЛЯ ДЛЯ КАЖДОЙ ПОЗИЦИИ:
+- art (артикул)
+- name (название)
+
+ПРАВИЛА:
+1. Если найден SAP Number — используй его как art.
+2. Если SAP Number отсутствует:
+   - используй техническое название или FUCHS Alternative
+   - используй его и как art, и как name.
+3. Поле "art" НИКОГДА не может быть null или пустым.
+4. Цена:
+   - может быть вида "123.45", "123,45", "123.45 / EA"
+   - используй только числовое значение
+   - если цены нет — ставь null
+5. Валюта:
+   - если явно не указана — используй "EUR"
+6. НЕ:
+   - придумывай цены
+   - дублируй позиции
+   - извлекай подписи, адреса, условия поставки
+
+ФОРМАТ ОТВЕТА:
+Верни ТОЛЬКО валидный JSON строго в этом формате:
+
+{
+  "items": [
+    {
+      "art": "string",
+      "name": "string",
+      "price": number | null,
+      "currency": "EUR"
+    }
+  ]
+}
+""".strip()
+
+
 class FuchsAIParser:
     def __init__(self):
-        self.client = AsyncGroq(api_key=settings.GROQ_API_KEY)
-        self.model = "llama-3.3-70b-versatile"  # Самая мощная модель в Groq сейчас
+        self.client = genai.Client(api_key=settings.GOOGLE_API_KEY)
+        self.model = "gemini-3-flash-preview"
 
-        # Настройка пути к Tesseract, если он не в переменной окружения
+        # Настройка пути к Tesseract, если он не в переменной окружении
         tesseract_cmd = os.getenv("TESSERACT_CMD")
         if tesseract_cmd:
             pytesseract.pytesseract.tesseract_cmd = tesseract_cmd
@@ -110,7 +159,7 @@ class FuchsAIParser:
 
     async def parse_to_objects(self, email_body: str, attachment_text: str = "") -> list[PriceCreate]:
         """
-        Генерация структурированных данных через Groq
+        Генерация структурированных данных через Google Gemini
         """
         # Если текста вообще нет — не тратим токены
         if not email_body.strip() and not attachment_text.strip():
@@ -120,70 +169,30 @@ class FuchsAIParser:
         combined_text = f"EMAIL_BODY:\n{email_body}\n\nATTACHMENT_DATA:\n{attachment_text}"[:MAX_TEXT_LEN]
         logger.info("FUCHS парсер начал работать, длина текста:%s", len(combined_text))
 
-        prompt = f"""
-        SYSTEM ROLE:
-        Ты — senior аналитик закупок и ценообразования в промышленной компании.
+        user_prompt = f"""
+ДАННЫЕ:
+--------------------
+{combined_text}
+--------------------
 
-        КОНТЕКСТ:
-        Это коммерческое предложение (quotation) от поставщика FUCHS.
-        Если валюта не указана явно — считай, что валюта EUR.
-
-        ЗАДАЧА:
-        Извлечь ТОЛЬКО товарные позиции.
-
-        ОБЯЗАТЕЛЬНЫЕ ПОЛЯ ДЛЯ КАЖДОЙ ПОЗИЦИИ:
-        - art (артикул)
-        - name (название)
-
-        ПРАВИЛА:
-        1. Если найден SAP Number — используй его как art.
-        2. Если SAP Number отсутствует:
-           - используй техническое название или FUCHS Alternative
-           - используй его и как art, и как name.
-        3. Поле "art" НИКОГДА не может быть null или пустым.
-        4. Цена:
-           - может быть вида "123.45", "123,45", "123.45 / EA"
-           - используй только числовое значение
-           - если цены нет — ставь null
-        5. Валюта:
-           - если явно не указана — используй "EUR"
-        6. НЕ:
-           - придумывай цены
-           - дублируй позиции
-           - извлекай подписи, адреса, условия поставки
-
-        ДАННЫЕ:
-        --------------------
-        {combined_text}
-        --------------------
-
-        ФОРМАТ ОТВЕТА:
-        Верни ТОЛЬКО валидный JSON строго в этом формате:
-
-        {{
-          "items": [
-            {{
-              "art": "string",
-              "name": "string",
-              "price": number | null,
-              "currency": "EUR"
-            }}
-          ]
-        }}
-        """
+Извлеки товарные позиции из данных выше и верни JSON.
+""".strip()
 
         try:
-            response = await self.client.chat.completions.create(
-                messages=[{"role": "user", "content": prompt}],
+            response = await self.client.aio.models.generate_content(
                 model=self.model,
-                temperature=0,  # Для точности данных ставим 0
-                response_format={"type": "json_object"}
+                contents=user_prompt,
+                config=types.GenerateContentConfig(
+                    system_instruction=SYSTEM_INSTRUCTION,
+                    temperature=0,  # Для точности данных ставим 0
+                    response_mime_type="application/json",
+                ),
             )
 
-            raw_response = response.choices[0].message.content
-            logger.info("=== RAW GROQ RESPONSE START ===")
+            raw_response = response.text
+            logger.info("=== RAW GEMINI RESPONSE START ===")
             logger.info(raw_response)
-            logger.info("=== RAW GROQ RESPONSE END ===")
+            logger.info("=== RAW GEMINI RESPONSE END ===")
 
             try:
                 raw_json = json.loads(raw_response)

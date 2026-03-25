@@ -403,13 +403,61 @@ async def process_requests_message(msg_dict: dict) -> str:
         contact_phone,
     )
 
+    # -------- 4.5. УМНЫЙ РОУТИНГ МЕНЕДЖЕРА --------
+    assigned_by_id = None
+
+    # Приоритет 1: Ищем менеджера по email или имени, извлеченному AI
+    if manager_email or manager_name:
+        users = await bitrix_service.search_users(email_query=manager_email, name_query=manager_name)
+        if users:
+            found_id = users[0].get("ID")
+            if found_id:
+                assigned_by_id = int(found_id)
+                logger.info("Менеджер найден по email/имени: ID=%s", assigned_by_id)
+
+    # Приоритет 2: Ищем в наблюдателях компании
+    if not assigned_by_id and company_id:
+        company = await bitrix_service.get_company(company_id)
+        if company:
+            # Пробуем достать наблюдателей
+            observers = company.get("OBSERVER_IDS")
+            if observers:
+                try:
+                    if isinstance(observers, list) and observers:
+                        assigned_by_id = int(observers[0])
+                    elif isinstance(observers, str) and observers.strip():
+                        assigned_by_id = int(observers.strip())
+                    
+                    if assigned_by_id:
+                        logger.info("Менеджер взят из наблюдателей компании (OBSERVER_IDS): ID=%s", assigned_by_id)
+                except (ValueError, TypeError):
+                    pass
+            
+            # Если в OBSERVER_IDS пусто, фоллбечимся на ответственного за компанию
+            if not assigned_by_id:
+                comp_assigned = company.get("ASSIGNED_BY_ID")
+                if comp_assigned:
+                    try:
+                        assigned_by_id = int(comp_assigned)
+                        logger.info("Менеджер взят из ответственного за компанию (ASSIGNED_BY_ID): ID=%s", assigned_by_id)
+                    except (ValueError, TypeError):
+                        pass
+
+    # Приоритет 3: Дефолтный ID
+    if not assigned_by_id:
+        assigned_by_id = DEFAULT_ASSIGNED_BY_ID
+        logger.warning(
+            "Менеджер не найден (email=%s, name=%s, company_id=%s). Использован дефолтный ID=%s",
+            manager_email, manager_name, company_id, assigned_by_id
+        )
+
     # -------- 5. СОЗДАНИЕ СДЕЛКИ В BITRIX24 --------
     deal_id = None
     try:
         deal_id = await deal_service.create_deal_from_email(
             subject=subject,
             sender=sender,
-            assigned_by_id=DEFAULT_ASSIGNED_BY_ID,
+            assigned_by_id=assigned_by_id,
             parsed_items=parsed_items,
             message_id=message_id,
         )
@@ -438,7 +486,7 @@ async def process_requests_message(msg_dict: dict) -> str:
         try:
             offer = await offer_service.create_offer_for_deal(
                 deal_id=deal_id,
-                bitrix_user_id=DEFAULT_ASSIGNED_BY_ID,
+                bitrix_user_id=assigned_by_id,
                 items=items_with_status,
                 currency=currency,
             )
