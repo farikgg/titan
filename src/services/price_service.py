@@ -64,8 +64,81 @@ class PriceService:
             if getattr(price_data, "valid_days", None) is None:
                 price_data = price_data.model_copy(update={"valid_days": 90})
 
+            # Unit price: пересчитываем если есть данные по таре
+            price_data = self._enrich_unit_price(price_data)
+
             return await self.repo.update(db, existing, price_data)
+
+        # Новая запись — тоже считаем unit_price
+        price_data = self._enrich_unit_price(price_data)
         return await self.repo.create(db, price_data)
+
+    @staticmethod
+    def calculate_unit_price(
+        price: "Decimal | float | None",
+        container_size: "Decimal | float | None",
+        container_unit: str | None,
+    ) -> tuple["Decimal | None", str | None]:
+        """
+        Рассчитать цену за единицу (кг/литр).
+
+        Пример:
+            price=501, container_size=200, container_unit="L"
+            → (Decimal('2.505'), 'per_liter')
+
+        Returns:
+            (unit_price, unit_measure) или (None, None)
+        """
+        from decimal import Decimal as D
+
+        if not price or not container_size:
+            return None, None
+
+        price_d = D(str(price))
+        size_d = D(str(container_size))
+
+        if size_d <= 0:
+            return None, None
+
+        unit_price = (price_d / size_d).quantize(D("0.0001"))
+
+        unit_measure_map = {
+            "L": "per_liter",
+            "KG": "per_kg",
+        }
+        unit_measure = unit_measure_map.get(
+            (container_unit or "").upper().strip(), "per_unit"
+        )
+        return unit_price, unit_measure
+
+    @classmethod
+    def _enrich_unit_price(cls, price_data: PriceCreate) -> PriceCreate:
+        """
+        Если есть container_size/container_unit — считаем unit_price.
+        Если данных по таре нет — ставим unit_price_missing=True.
+        """
+        container_size = getattr(price_data, "container_size", None)
+        container_unit = getattr(price_data, "container_unit", None)
+        price_val = getattr(price_data, "price", None)
+
+        unit_price, unit_measure = cls.calculate_unit_price(
+            price_val, container_size, container_unit
+        )
+
+        updates = {}
+        if unit_price is not None:
+            updates["unit_price"] = unit_price
+            updates["unit_measure"] = unit_measure
+            updates["unit_price_missing"] = False
+        elif price_val and not container_size:
+            # Цена есть, но данных по таре нет → флаг для ручной проверки
+            updates["unit_price_missing"] = True
+
+        if updates:
+            # Сохраняем существующие значения если не перезаписываем
+            price_data = price_data.model_copy(update=updates)
+
+        return price_data
 
     async def resolve_prices(self, db: AsyncSession, skus: Iterable[str], source: str, force_refresh: bool = False):
         # нормализуем письма

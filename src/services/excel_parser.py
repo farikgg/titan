@@ -1,9 +1,57 @@
+import re
+
 import pandas as pd
 from io import BytesIO
 from decimal import Decimal
 
 from src.schemas.price_schema import PriceCreate
 from src.db.models.price_model import Source, SourceType
+
+
+# Паттерны для поиска колонки с объёмом/весом тары
+_CONTAINER_COL_PATTERNS = (
+    "pack size", "container", "volume", "net weight",
+    "package", "filling", "gebinde", "inhalt",
+    "drum", "pail", "can", "barrel",
+)
+
+# Regex для извлечения числа + единицы из строки вида "200 L", "20kg", "180 KG drum"
+_SIZE_UNIT_RE = re.compile(
+    r"(\d+(?:[.,]\d+)?)\s*(l|L|liter|litre|kg|KG|kilogram)\b",
+    re.IGNORECASE,
+)
+
+
+def _parse_container_value(raw) -> tuple[Decimal | None, str | None]:
+    """
+    Парсит значение ячейки с объёмом тары.
+    Примеры: "200 L", "20kg", 180, "5 Liter Kanister"
+    Возвращает (container_size, container_unit) или (None, None)
+    """
+    if pd.isna(raw):
+        return None, None
+
+    text = str(raw).strip()
+    if not text:
+        return None, None
+
+    # Попытка regex
+    m = _SIZE_UNIT_RE.search(text)
+    if m:
+        size = Decimal(m.group(1).replace(",", "."))
+        unit_raw = m.group(2).upper().strip()
+        unit = "KG" if unit_raw.startswith("K") else "L"
+        return size, unit
+
+    # Если только число без единицы — берём число, единица null
+    try:
+        size = Decimal(str(raw).replace(",", ".").strip())
+        if size > 0:
+            return size, None
+    except Exception:
+        pass
+
+    return None, None
 
 
 class FuchsExcelParser:
@@ -20,6 +68,14 @@ class FuchsExcelParser:
 
         if not price_col:
             return []
+
+        # ищем колонку с объёмом/весом тары
+        container_col = None
+        for col in df.columns:
+            col_lower = col.lower()
+            if any(p in col_lower for p in _CONTAINER_COL_PATTERNS):
+                container_col = col
+                break
 
         items: list[PriceCreate] = []
         seen: set[tuple[str, Decimal | None]] = set()
@@ -49,6 +105,16 @@ class FuchsExcelParser:
                 continue
             seen.add(key)
 
+            # Container info
+            container_size = None
+            container_unit = None
+            if container_col is not None:
+                container_size, container_unit = _parse_container_value(row.get(container_col))
+
+            # Также пытаемся извлечь из названия, если в колонке не нашли
+            if container_size is None:
+                container_size, container_unit = _parse_container_value(name)
+
             items.append(
                 PriceCreate(
                     art=art,
@@ -57,8 +123,11 @@ class FuchsExcelParser:
                     currency="EUR",
                     source=Source.FUCHS,
                     source_type=SourceType.EMAIL,
+                    container_size=container_size,
+                    container_unit=container_unit,
                 )
             )
 
         return items
+
 

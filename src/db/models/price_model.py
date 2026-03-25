@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 from sqlalchemy.orm import Mapped, mapped_column
-from sqlalchemy import String, Numeric, Enum, func, Text, UniqueConstraint, DateTime, Integer
+from sqlalchemy import String, Numeric, Enum, func, Text, UniqueConstraint, DateTime, Integer, Boolean
 
 from src.db.initialize import Base
 
@@ -41,6 +41,18 @@ class PriceModel(Base):
     # valid_days: срок действия цены (по умолчанию 90)
     valid_days: Mapped[int] = mapped_column(Integer, nullable=False, server_default="90")
     status: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)
+
+    # --- Unit price tracking (oils / lubricants) ---
+    # Объём/вес одной тары (бочка 200л, канистра 20л, и т.д.)
+    container_size: Mapped[Decimal | None] = mapped_column(Numeric(10, 3), nullable=True)
+    # Единица измерения тары: "L" (литр), "KG" (килограмм)
+    container_unit: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    # Рассчитанная цена за единицу (за KG или за L)
+    unit_price: Mapped[Decimal | None] = mapped_column(Numeric(12, 4), nullable=True)
+    # В чём выражена unit_price: "per_kg", "per_liter"
+    unit_measure: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    # Флаг: данные по объёму тары не найдены — требуется ручная проверка
+    unit_price_missing: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
 
     __table_args__ = (
         UniqueConstraint("art", "source", name="uq_price_art_source"),
