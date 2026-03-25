@@ -6,7 +6,7 @@
 - Database: PostgreSQL.
 - ORM: SQLAlchemy 2.0 (обязательно асинхронная версия).
 - Migrations: Alembic.
-- AI Inference: Groq API.
+- AI Inference: Google Gemini API.
 - Validation: Pydantic v2.
 
 2. Infrastructure & Async Tasks
@@ -36,7 +36,7 @@ src/
 ├── schemas/               # Pydantic модели (DTO)
 ├── services/              # БИЗНЕС-ЛОГИКА (Самое важное)
 │   ├── bitrix_service.py  # Общение с CRM
-│   ├── parser_fuchs.py    # Логика с Groq (AI парсинг)
+│   ├── parser_fuchs.py    # Логика с Gemini (AI парсинг)
 │   ├── sync_skf.py        # Логика работы с API SKF
 │   └── pdf_service.py     # Генерация PDF
 ├── repositories/          # Работа с БД (CRUD)
