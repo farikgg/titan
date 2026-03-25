@@ -40,6 +40,7 @@ class PriceModel(Base):
     valid_from: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
     # valid_days: срок действия цены (по умолчанию 90)
     valid_days: Mapped[int] = mapped_column(Integer, nullable=False, server_default="90")
+    status: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)
 
     __table_args__ = (
         UniqueConstraint("art", "source", name="uq_price_art_source"),

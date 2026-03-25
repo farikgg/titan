@@ -652,3 +652,30 @@ def sync_skf_bulk(skus: list[str]):
     """
     for sku in skus:
         sync_skf_single.delay(sku)
+
+
+async def _sync_price_statuses():
+    """
+    Фоновая задача для обновления колонки status в PriceModel.
+    Использует существующую логику validity_status.
+    """
+    from src.db.models.price_model import PriceModel
+    async with async_session() as session:
+        result = await session.execute(select(PriceModel))
+        prices = result.scalars().all()
+
+        updated_count = 0
+        for price in prices:
+            current_status = price.validity_status
+            if price.status != current_status:
+                price.status = current_status
+                updated_count += 1
+
+        if updated_count > 0:
+            await session.commit()
+            logger.info("Sync Price Statuses: updated %d prices", updated_count)
+
+
+@app.task(name="src.worker.tasks.sync_price_statuses")
+def sync_price_statuses():
+    return run_async(_sync_price_statuses())

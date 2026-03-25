@@ -12,10 +12,7 @@ if settings.REDIS_URL:
 else:
     broker_url = f"redis://{settings.REDIS_HOST}:{settings.REDIS_PORT}/0"
 
-# Включаем backend результатов, чтобы можно было получать статус задач через API
-result_backend = broker_url
-
-app = Celery("tasks", broker=broker_url, backend=result_backend)
+app = Celery("tasks", broker=broker_url, backend=broker_url)
 
 app.conf.update(
     task_serializer="json",
@@ -24,6 +21,9 @@ app.conf.update(
     timezone="Asia/Almaty",
     enable_utc=True,
     task_track_started=True,
+    task_ignore_result=False,
+    result_backend=broker_url,
+    result_persistent=True,
     # 1 воркер = 1 задача
     worker_prefetch_multiplier=1,
 )
@@ -45,6 +45,11 @@ app.conf.beat_schedule = {
         'task': 'src.worker.tasks.send_fuchs_price_expiry_report',
         'schedule': crontab(hour=9, minute=0),
     },
+    # Каждый час — обновление статусов (expired/expiring_soon) в БД
+    'sync_price_statuses_hourly': {
+        'task': 'src.worker.tasks.sync_price_statuses',
+        'schedule': crontab(minute=0),
+    },
 }
 
 app.conf.task_routes = {
@@ -58,6 +63,7 @@ app.conf.task_routes = {
     'src.worker.tasks.process_deal_update': {'queue': 'default'},
     'src.worker.tasks.sync_skf_bulk': {'queue': 'default'},
     'src.worker.tasks.send_fuchs_price_expiry_report': {'queue': 'default'},
+    'src.worker.tasks.sync_price_statuses': {'queue': 'default'},
 }
 
 # app.conf.worker_pool = "solo" # убрать на проде

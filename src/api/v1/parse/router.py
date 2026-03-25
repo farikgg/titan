@@ -113,30 +113,48 @@ async def get_status(
       - если backend отключён, вернёт статус "unknown".
     """
     try:
-        # Пытаемся получить статус из Celery (если когда-нибудь включим backend)
-        res = AsyncResult(task_id, app=app)
+        from redis.exceptions import ReadOnlyError
+    except ImportError:
+        ReadOnlyError = Exception
 
+    try:
+        # Пытаемся получить статус из Celery
+        res = AsyncResult(task_id, app=app)
+        
+        state = res.state
+        
         response = {
             "task_id": task_id,
-            "status": res.state,
+            "status": state,
             "result": None,
         }
 
         if res.ready():
-            # если задача завершена, возвращаем результат (то, что вернул return в task)
-            response["result"] = res.result if res.successful() else str(res.result)
+            # если задача завершена, возвращаем результат
+            try:
+                response["result"] = res.result if res.successful() else str(res.result)
+            except Exception as e:
+                logger.error("Error fetching task result for %s: %s", task_id, e)
+                response["result"] = f"Error: {str(e)}"
 
         return response
 
-    except AttributeError as e:
-        # Сюда попадаем при DisabledBackend (как в нынешней конфигурации)
-        logger.warning(
-            "Celery backend is disabled, cannot fetch task status for %s: %s",
+    except ReadOnlyError as e:
+        logger.error("Redis is in ReadOnly mode, cannot fetch/update task status for %s: %s", task_id, e)
+        return {
+            "task_id": task_id,
+            "status": "error_readonly",
+            "message": "Redis configuration error: ReadOnly",
+        }
+    except Exception as e:
+        logger.exception(
+            "Unexpected error fetching task status for %s: [%s] %s",
             task_id,
+            type(e).__name__,
             e,
         )
         return {
             "task_id": task_id,
-            "status": "unknown",
-            "result": None,
+            "status": "error",
+            "detail": f"{type(e).__name__}: {str(e)}",
         }
