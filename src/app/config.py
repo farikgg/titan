@@ -56,7 +56,7 @@ BITRIX_STAGES = BitrixStages()
 class Settings(BaseSettings):
     DATABASE_URL: str
     BITRIX_WEBHOOK: str | None = None
-    GROQ_API_KEY: str | None = None
+    GOOGLE_API_KEY: str | None = None
     # Если REDIS_URL задан (например, redis://default:pass@host:6379/0),
     # он используется для Celery и LockService.
     # Иначе используется пара REDIS_HOST / REDIS_PORT.
