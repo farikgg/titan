@@ -739,21 +739,19 @@ async def send_deal_chat_message(
 
     bitrix_service = _get_bitrix_service()
     author_id = getattr(user, "bitrix_user_id", None)
-    ok_message_id = await bitrix_service.send_deal_chat_message(
-        deal_id=deal_id,
-        author_id=author_id,
-        text=body.text.strip(),
-    )
 
-    if ok_message_id is None:
-        raise HTTPException(
-            status_code=502,
-            detail="Не удалось отправить сообщение во встроенный чат Bitrix24",
+    try:
+        message_id = await bitrix_service.send_deal_chat_message(
+            deal_id=deal_id,
+            author_id=author_id,
+            text=body.text.strip(),
         )
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
 
     return {
         "deal_id": deal_id,
-        "message_id": ok_message_id,
+        "message_id": message_id,
         "text": body.text.strip(),
         "author_id": author_id,
     }

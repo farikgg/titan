@@ -856,7 +856,23 @@ class BitrixService:
                 )
                 raise
 
-            return resp.json()
+            payload = resp.json()
+
+            # Bitrix иногда возвращает ошибку в JSON даже при HTTP 200.
+            if isinstance(payload, dict) and (
+                "error" in payload or "error_description" in payload
+            ):
+                logger.error(
+                    "Bitrix IM REST API returned error: method=%s status=%s payload=%s",
+                    method,
+                    resp.status_code,
+                    payload,
+                )
+                raise RuntimeError(
+                    f"Bitrix IM REST error for {method}: {payload.get('error') or payload.get('error_description')}"
+                )
+
+            return payload
 
     async def ensure_deal_chat_dialog_id(
         self,
@@ -867,32 +883,28 @@ class BitrixService:
 
         Используем метод `im.chat.crm.add`, который связывает чат с сущностью сделки.
         """
-        try:
-            payload: Dict[str, object] = {
-                # На некоторых инсталляциях Bitrix параметры ожидаются напрямую,
-                # на других — в виде fields[..]. Передаём оба формата (Bitrix их игнорирует/объединяет).
-                "ENTITY_TYPE": "CRM",
-                "ENTITY_ID": str(deal_id),
-                "fields[ENTITY_TYPE]": "CRM",
-                "fields[ENTITY_ID]": str(deal_id),
-            }
-            data = await self._im_rest_call("im.chat.crm.add", payload)
+        payload: Dict[str, object] = {
+            # Параметры REST обычно ожидаются напрямую.
+            # (Если твоя инсталляция требует иной формат — увидим это в ошибке.)
+            "ENTITY_TYPE": "CRM",
+            "ENTITY_ID": str(deal_id),
+        }
 
-            result = data.get("result", data) if isinstance(data, dict) else data
-            if isinstance(result, dict):
-                dialog_id = result.get("DIALOG_ID") or result.get("dialogId")
-                if dialog_id is not None:
-                    return int(dialog_id)
+        data = await self._im_rest_call("im.chat.crm.add", payload)
+        result = data.get("result", data) if isinstance(data, dict) else data
 
-                chat_id = result.get("CHAT_ID") or result.get("chatId")
-                # В ряде кейсов DIALOG_ID=CHAT_ID, поэтому пробуем вернуть это.
-                if chat_id is not None:
-                    return int(chat_id)
+        if isinstance(result, dict):
+            dialog_id = result.get("DIALOG_ID") or result.get("dialogId")
+            if dialog_id is not None:
+                return int(dialog_id)
 
-            return None
-        except Exception:
-            logger.exception("Bitrix IM: ошибка ensure_deal_chat_dialog_id для deal_id=%s", deal_id)
-            return None
+            chat_id = result.get("CHAT_ID") or result.get("chatId")
+            if chat_id is not None:
+                return int(chat_id)
+
+        raise RuntimeError(
+            f"Bitrix IM: im.chat.crm.add did not return DIALOG_ID/CHAT_ID. Raw response: {data}"
+        )
 
     async def send_deal_chat_message(
         self,
@@ -907,7 +919,7 @@ class BitrixService:
         """
         dialog_id = await self.ensure_deal_chat_dialog_id(deal_id=deal_id)
         if not dialog_id:
-            return None
+            raise RuntimeError("Bitrix IM: failed to resolve dialog_id for deal chat")
 
         try:
             payload: Dict[str, object] = {
@@ -924,10 +936,10 @@ class BitrixService:
                 message_id = result.get("MESSAGE_ID") or result.get("messageId") or result.get("ID") or result.get("id")
                 if message_id is not None:
                     return int(message_id)
-            return None
+            raise RuntimeError(f"Bitrix IM: im.message.add did not return MESSAGE_ID. Raw response: {data}")
         except Exception:
             logger.exception("Bitrix IM: ошибка отправки сообщения в deal chat deal_id=%s dialog_id=%s", deal_id, dialog_id)
-            return None
+            raise
 
     async def get_deal_chat_messages(
         self,
