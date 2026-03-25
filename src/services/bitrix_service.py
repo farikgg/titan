@@ -829,3 +829,135 @@ class BitrixService:
             )
             # Возвращаем пустой список вместо None, чтобы фронт не падал
             return []
+
+    # ──────────────────────────────────────────────
+    #  Встроенный чат сделки (Bitrix24 IM)
+    # ──────────────────────────────────────────────
+
+    async def _im_rest_call(self, method: str, data: Dict[str, object]) -> Dict:
+        """
+        Вызов методов Bitrix24 REST напрямую (через httpx).
+        Нужен, т.к. fast_bitrix24/typed методы могут не покрывать IM полностью.
+        """
+        webhook = settings.BITRIX_WEBHOOK.rstrip("/")
+        url = f"{webhook}/{method}.json"
+
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.post(url, data=data)
+            try:
+                resp.raise_for_status()
+            except httpx.HTTPStatusError:
+                # Текст ответа нужен, чтобы быстро понять: неверные параметры / нет прав / метод недоступен.
+                logger.error(
+                    "Bitrix IM REST error: method=%s status=%s body=%s",
+                    method,
+                    resp.status_code,
+                    resp.text,
+                )
+                raise
+
+            return resp.json()
+
+    async def ensure_deal_chat_dialog_id(
+        self,
+        deal_id: int,
+    ) -> int | None:
+        """
+        Создаёт/привязывает IM-чат к CRM-сделке и возвращает DIALOG_ID.
+
+        Используем метод `im.chat.crm.add`, который связывает чат с сущностью сделки.
+        """
+        try:
+            payload: Dict[str, object] = {
+                # На некоторых инсталляциях Bitrix параметры ожидаются напрямую,
+                # на других — в виде fields[..]. Передаём оба формата (Bitrix их игнорирует/объединяет).
+                "ENTITY_TYPE": "CRM",
+                "ENTITY_ID": str(deal_id),
+                "fields[ENTITY_TYPE]": "CRM",
+                "fields[ENTITY_ID]": str(deal_id),
+            }
+            data = await self._im_rest_call("im.chat.crm.add", payload)
+
+            result = data.get("result", data) if isinstance(data, dict) else data
+            if isinstance(result, dict):
+                dialog_id = result.get("DIALOG_ID") or result.get("dialogId")
+                if dialog_id is not None:
+                    return int(dialog_id)
+
+                chat_id = result.get("CHAT_ID") or result.get("chatId")
+                # В ряде кейсов DIALOG_ID=CHAT_ID, поэтому пробуем вернуть это.
+                if chat_id is not None:
+                    return int(chat_id)
+
+            return None
+        except Exception:
+            logger.exception("Bitrix IM: ошибка ensure_deal_chat_dialog_id для deal_id=%s", deal_id)
+            return None
+
+    async def send_deal_chat_message(
+        self,
+        deal_id: int,
+        *,
+        author_id: int | None,
+        text: str,
+    ) -> int | None:
+        """
+        Отправляет сообщение в IM-чат, привязанный к сделке.
+        Возвращает MESSAGE_ID (если Bitrix вернёт).
+        """
+        dialog_id = await self.ensure_deal_chat_dialog_id(deal_id=deal_id)
+        if not dialog_id:
+            return None
+
+        try:
+            payload: Dict[str, object] = {
+                "DIALOG_ID": str(dialog_id),
+                "MESSAGE": text,
+            }
+            if author_id:
+                payload["AUTHOR_ID"] = str(author_id)
+
+            data = await self._im_rest_call("im.message.add", payload)
+            result = data.get("result", data) if isinstance(data, dict) else data
+
+            if isinstance(result, dict):
+                message_id = result.get("MESSAGE_ID") or result.get("messageId") or result.get("ID") or result.get("id")
+                if message_id is not None:
+                    return int(message_id)
+            return None
+        except Exception:
+            logger.exception("Bitrix IM: ошибка отправки сообщения в deal chat deal_id=%s dialog_id=%s", deal_id, dialog_id)
+            return None
+
+    async def get_deal_chat_messages(
+        self,
+        deal_id: int,
+        *,
+        limit: int = 50,
+    ) -> List[Dict]:
+        """
+        Получает сообщения из IM-диалога, привязанного к сделке.
+        """
+        dialog_id = await self.ensure_deal_chat_dialog_id(deal_id=deal_id)
+        if not dialog_id:
+            return []
+
+        try:
+            payload: Dict[str, object] = {"DIALOG_ID": str(dialog_id)}
+            data = await self._im_rest_call("im.dialog.get", payload)
+
+            result = data.get("result", data) if isinstance(data, dict) else data
+            messages = []
+            if isinstance(result, dict):
+                raw_msgs = result.get("messages") or result.get("MESSAGE_LIST") or []
+                if isinstance(raw_msgs, list):
+                    messages = raw_msgs
+
+            if limit and len(messages) > limit:
+                # обычно messages отсортирован по времени; на всякий режем хвост
+                messages = messages[:limit]
+
+            return messages
+        except Exception:
+            logger.exception("Bitrix IM: ошибка получения сообщений deal_id=%s dialog_id=%s", deal_id, dialog_id)
+            return []

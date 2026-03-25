@@ -703,26 +703,57 @@ async def get_deal_comments(
 @router.get(
     "/{deal_id}/chat/messages",
     dependencies=[Depends(verify_user_or_admin_token)],
-    summary="Получить сообщения встроенного чата сделки (Bitrix timeline)",
+    summary="Получить сообщения встроенного IM-чата сделки (Bitrix24)",
 )
 async def get_deal_chat_messages(
     deal_id: int,
     limit: int = 50,
     user=Depends(get_tg_user_or_admin),
 ):
-    # Вся логика получения уже реализована в get_deal_comments,
-    # здесь просто удобный алиас под фронт.
-    return await get_deal_comments(deal_id=deal_id, limit=limit, user=user)  # type: ignore[misc]
+    bitrix_service = _get_bitrix_service()
+    # Сначала убеждаемся, что сделка существует (и есть доступ к ней).
+    deal = await bitrix_service.get_deal(deal_id)
+    if not deal:
+        raise HTTPException(status_code=404, detail=f"Сделка {deal_id} не найдена в Bitrix24")
+
+    messages = await bitrix_service.get_deal_chat_messages(deal_id=deal_id, limit=limit)
+    return {
+        "deal_id": deal_id,
+        "messages": messages,
+        "total": len(messages),
+    }
 
 
 @router.post(
     "/{deal_id}/chat/messages",
     dependencies=[Depends(verify_user_or_admin_token)],
-    summary="Отправить сообщение встроенного чата сделки (Bitrix timeline)",
+    summary="Отправить сообщение во встроенный IM-чат сделки (Bitrix24)",
 )
 async def send_deal_chat_message(
     deal_id: int,
     body: AddCommentRequest,
     user=Depends(get_tg_user_or_admin),
 ):
-    return await add_deal_comment(deal_id=deal_id, body=body, user=user)  # type: ignore[misc]
+    if not body.text or not body.text.strip():
+        raise HTTPException(status_code=400, detail="Текст сообщения не может быть пустым")
+
+    bitrix_service = _get_bitrix_service()
+    author_id = getattr(user, "bitrix_user_id", None)
+    ok_message_id = await bitrix_service.send_deal_chat_message(
+        deal_id=deal_id,
+        author_id=author_id,
+        text=body.text.strip(),
+    )
+
+    if ok_message_id is None:
+        raise HTTPException(
+            status_code=502,
+            detail="Не удалось отправить сообщение во встроенный чат Bitrix24",
+        )
+
+    return {
+        "deal_id": deal_id,
+        "message_id": ok_message_id,
+        "text": body.text.strip(),
+        "author_id": author_id,
+    }
