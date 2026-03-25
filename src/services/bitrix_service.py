@@ -16,6 +16,16 @@ class BitrixService:
     def __init__(self, bx: Bitrix):
         self.bx = bx
 
+    @staticmethod
+    def _im_not_supported_error(exc: Exception) -> bool:
+        msg = str(exc).lower()
+        return (
+            "error_method_not_found" in msg
+            or "method not found" in msg
+            or "unknown method" in msg
+            or "method unavailable" in msg
+        )
+
     async def get_deals(self, bitrix_user_id: int, stage_id: str | None = None) -> List[Dict]:
         try:
             # Сначала пробуем найти сделки в воронке Гидротех (CATEGORY_ID = 9)
@@ -917,11 +927,9 @@ class BitrixService:
         Отправляет сообщение в IM-чат, привязанный к сделке.
         Возвращает MESSAGE_ID (если Bitrix вернёт).
         """
-        dialog_id = await self.ensure_deal_chat_dialog_id(deal_id=deal_id)
-        if not dialog_id:
-            raise RuntimeError("Bitrix IM: failed to resolve dialog_id for deal chat")
-
         try:
+            # 1) Пытаемся отправить в IM-диалог (если методы доступны)
+            dialog_id = await self.ensure_deal_chat_dialog_id(deal_id=deal_id)
             payload: Dict[str, object] = {
                 "DIALOG_ID": str(dialog_id),
                 "MESSAGE": text,
@@ -937,8 +945,21 @@ class BitrixService:
                 if message_id is not None:
                     return int(message_id)
             raise RuntimeError(f"Bitrix IM: im.message.add did not return MESSAGE_ID. Raw response: {data}")
-        except Exception:
-            logger.exception("Bitrix IM: ошибка отправки сообщения в deal chat deal_id=%s dialog_id=%s", deal_id, dialog_id)
+        except Exception as e:
+            # 2) Если IM в Bitrix24 не поддерживается (например, ERROR_METHOD_NOT_FOUND) — fallback в timeline-комментарии.
+            if self._im_not_supported_error(e):
+                logger.warning(
+                    "Bitrix IM не поддерживается в этой инсталляции: fallback to timeline comment. deal_id=%s, err=%s",
+                    deal_id,
+                    e,
+                )
+                comment_id = await self.add_deal_comment(deal_id=deal_id, text=text, author_id=author_id)
+                return comment_id
+
+            logger.exception(
+                "Bitrix IM: ошибка отправки сообщения в deal chat (deal_id=%s).",
+                deal_id,
+            )
             raise
 
     async def get_deal_chat_messages(
@@ -950,11 +971,9 @@ class BitrixService:
         """
         Получает сообщения из IM-диалога, привязанного к сделке.
         """
-        dialog_id = await self.ensure_deal_chat_dialog_id(deal_id=deal_id)
-        if not dialog_id:
-            return []
-
         try:
+            dialog_id = await self.ensure_deal_chat_dialog_id(deal_id=deal_id)
+
             payload: Dict[str, object] = {"DIALOG_ID": str(dialog_id)}
             data = await self._im_rest_call("im.dialog.get", payload)
 
@@ -966,10 +985,18 @@ class BitrixService:
                     messages = raw_msgs
 
             if limit and len(messages) > limit:
-                # обычно messages отсортирован по времени; на всякий режем хвост
                 messages = messages[:limit]
 
             return messages
-        except Exception:
-            logger.exception("Bitrix IM: ошибка получения сообщений deal_id=%s dialog_id=%s", deal_id, dialog_id)
+        except Exception as e:
+            if self._im_not_supported_error(e):
+                logger.warning(
+                    "Bitrix IM не поддерживается (get_deal_chat_messages): fallback to timeline comment list. deal_id=%s, err=%s",
+                    deal_id,
+                    e,
+                )
+                return await self.get_deal_comments(deal_id=deal_id, limit=limit)
+
+            payload: Dict[str, object] = {"DIALOG_ID": str(dialog_id)}
+            logger.exception("Bitrix IM: ошибка получения сообщений deal_id=%s.", deal_id)
             return []
