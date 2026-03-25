@@ -24,10 +24,10 @@ POLICIES = {
 
 
 def require_min_role(min_role: Role):
-    from src.core.auth import get_tg_user
+    from src.core.auth import get_tg_user_or_admin
     min_level = ROLE_LEVELS[min_role]
 
-    def checker(user=Depends(get_tg_user)):
+    def checker(user=Depends(get_tg_user_or_admin)):
         user_role = Role(user.role)
         if ROLE_LEVELS[user_role] < min_level:
             raise HTTPException(

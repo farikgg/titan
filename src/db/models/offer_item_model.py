@@ -9,18 +9,19 @@ from src.db.initialize import Base
 class OfferItemModel(Base):
     __tablename__ = "offer_items"
 
-    id: Mapped[int] = mapped_column(primary_key=True)
-    offer_id: Mapped[int] = mapped_column(
+    id = Column(Integer, primary_key=True)
+    offer_id = Column(
+        Integer,
         ForeignKey("offers.id", ondelete="CASCADE"),
         index=True
     )
 
-    sku: Mapped[str] = mapped_column(String(150))
-    name: Mapped[str] = mapped_column(String(255))
+    sku = Column(String(150))
+    name = Column(String(255))
 
-    price: Mapped[Decimal] = mapped_column(Numeric(12, 2))
-    quantity: Mapped[int] = mapped_column(default=1)
-    total: Mapped[Decimal] = mapped_column(Numeric(12, 2))
+    price = Column(Numeric(12, 2))
+    quantity = Column(Integer, default=1)
+    total = Column(Numeric(12, 2))
 
     offer = relationship("OfferModel", back_populates="items")
 
