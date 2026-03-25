@@ -2,8 +2,8 @@ import enum
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy.orm import Mapped, relationship
-from sqlalchemy import Column, String, Numeric, Enum, ForeignKey, func, Text, Boolean, Integer, DateTime
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy import String, Numeric, Enum, ForeignKey, func, Text, Boolean, DateTime
 
 from src.db.initialize import Base
 
@@ -18,36 +18,36 @@ class OfferStatus(enum.Enum):
 class OfferModel(Base):
     __tablename__ = "offers"
 
-    id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, ForeignKey("users.id"), index=True)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
 
-    status = Column(
+    status: Mapped[OfferStatus] = mapped_column(
         Enum(OfferStatus),
         default=OfferStatus.DRAFT,
         nullable=False,
     )
 
-    total = Column(Numeric(12, 2), default=0)
-    bitrix_deal_id = Column(String(50), nullable=True)
+    total: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
+    bitrix_deal_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
-    created_at = Column(
+    created_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now()
     )
-    is_generating = Column(Boolean, default=False)
-    pdf_path = Column(String(255), nullable=True)
+    is_generating: Mapped[bool] = mapped_column(default=False)
+    pdf_path: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     items = relationship(
         "OfferItemModel",
         back_populates="offer",
         cascade="all, delete-orphan"
     )
-    currency = Column(String(3), nullable=True)
+    currency: Mapped[str | None] = mapped_column(String(3), nullable=True)
 
     # Текстовые условия КП (могут быть NULL)
-    payment_terms = Column(Text, nullable=True)
-    delivery_terms = Column(Text, nullable=True)
-    warranty_terms = Column(Text, nullable=True)
+    payment_terms: Mapped[str | None] = mapped_column(Text, nullable=True)
+    delivery_terms: Mapped[str | None] = mapped_column(Text, nullable=True)
+    warranty_terms: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Флаг, включает ли итоговая цена НДС.
     # Используется, в частности, для отображения/скрытия подписи «(без НДС)» в PDF.
-    vat_enabled = Column(Boolean, nullable=True)
+    vat_enabled: Mapped[bool | None] = mapped_column(Boolean, nullable=True)

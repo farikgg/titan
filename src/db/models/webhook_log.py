@@ -1,4 +1,4 @@
-from sqlalchemy import JSON, String, func
+from sqlalchemy import JSON, String, func, DateTime
 from sqlalchemy.orm import Mapped, mapped_column
 from datetime import datetime
 
@@ -12,5 +12,6 @@ class WebhookLog(Base):
     source: Mapped[str] = mapped_column(String(50))  # bitrix
     payload: Mapped[dict] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(
+        DateTime,
         server_default=func.now()
     )
