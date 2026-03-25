@@ -19,12 +19,38 @@ class BitrixService:
     @staticmethod
     def _im_not_supported_error(exc: Exception) -> bool:
         msg = str(exc).lower()
-        return (
+
+        # 1) Частые сообщения из Bitrix REST.
+        if (
             "error_method_not_found" in msg
             or "method not found" in msg
             or "unknown method" in msg
             or "method unavailable" in msg
+        ):
+            return True
+
+        # 2) На части инсталляций IM-методы "не существуют" и возвращают 404.
+        # В таком случае fallback должен сработать.
+        im_method_markers = (
+            "im.chat.crm.add",
+            "im.message.add",
+            "im.dialog.get",
         )
+        if "404" in msg and any(m in msg for m in im_method_markers):
+            return True
+
+        # 3) Если httpx HTTPStatusError содержит response текст — попробуем распарсить подсказку.
+        resp = getattr(exc, "response", None)
+        if resp is not None:
+            status_code = getattr(resp, "status_code", None)
+            body = (getattr(resp, "text", "") or "").lower()
+            combined = msg + " " + body
+            if "error_method_not_found" in combined or "method not found" in combined:
+                return True
+            if status_code == 404 and any(m in combined for m in im_method_markers):
+                return True
+
+        return False
 
     async def get_deals(self, bitrix_user_id: int, stage_id: str | None = None) -> List[Dict]:
         try:
