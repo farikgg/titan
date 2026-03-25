@@ -38,7 +38,7 @@ app.conf.beat_schedule = {
     },
     'parser_requests_every_hour': {
         'task': 'src.worker.tasks.parse_from_requests',
-        'schedule': crontab(minute=0),  # Каждый час в 00 минут (например, 10:00, 11:00, 12:00...)
+        'schedule': crontab(minute='*/1'),  # Каждую минуту
     },
     # Каждый день в 09:00 по Asia/Almaty — отчёт по просроченным/истекающим ценам FUCHS
     'fuchs_price_expiry_report_daily': {

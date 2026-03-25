@@ -131,6 +131,43 @@ class OutlookClient:
             resp.raise_for_status()
             return resp.json().get("value", [])
 
+    async def fetch_unread_messages(self, limit: int = 50) -> List[dict]:
+        """
+        Получает непрочитанные письма из указанной папки.
+        """
+        mailbox = self.mailbox or "testAI@tpgt-titan.com"
+        folder_name = self.folder_name or "Inbox"
+        
+        folder_id = await self.get_or_create_folder(folder_name)
+        
+        url = f"{GRAPH_BASE}/users/{mailbox}/mailFolders/{folder_id}/messages"
+        params = {
+            "$top": limit,
+            "$filter": "isRead eq false",
+            "$orderby": "receivedDateTime DESC",
+            "$expand": "attachments",
+        }
+
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.get(url, headers=await self._headers(), params=params)
+            resp.raise_for_status()
+            return resp.json().get("value", [])
+
+    async def mark_as_read(self, message_id: str):
+        """
+        Помечает письмо как прочитанное.
+        """
+        mailbox = self.mailbox or "testAI@tpgt-titan.com"
+        url = f"{GRAPH_BASE}/users/{mailbox}/messages/{message_id}"
+        
+        payload = {
+            "isRead": True
+        }
+        
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.patch(url, headers=await self._headers(), json=payload)
+            resp.raise_for_status()
+
     @staticmethod
     def parse_attachments(raw_attachments: list) -> list[dict]:
         """

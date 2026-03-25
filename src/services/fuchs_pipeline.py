@@ -71,10 +71,32 @@ async def process_fuchs_message(msg_dict: dict) -> str:
     # -------- 2. AI fallback --------
     if not items:
         attachment_text = ai_parser.extract_text_from_attachments(attachments)
-        items = await ai_parser.parse_to_objects(
+        extraction_result = await ai_parser.parse_to_objects(
             msg_dict.get("body", ""),
             attachment_text,
         )
+        
+        raw_items = extraction_result.get("items", [])
+        if not isinstance(raw_items, list):
+            raw_items = []
+            
+        for ri in raw_items:
+            try:
+                # Мапим поля из ExtractionItem в PriceCreate
+                item_data = {
+                    "art": ri.get("art"),
+                    "name": ri.get("name"),
+                    "raw_name": ri.get("raw_name"),
+                    "price": ri.get("price"),
+                    "quantity": ri.get("quantity", 1.0),
+                    "unit": ri.get("unit"),
+                    "currency": ri.get("currency", "EUR"),
+                    "source": "fuchs",
+                    "source_type": "email"
+                }
+                items.append(PriceCreate(**item_data))
+            except Exception as e:
+                logger.warning(f"Ошибка маппинга товара AI: {e}")
 
     if not items:
         return "No data"

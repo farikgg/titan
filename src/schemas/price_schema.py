@@ -9,8 +9,11 @@ from src.db.models.price_model import Source, SourceType
 class PriceBase(BaseModel):
     art: str
     name: str
+    raw_name: str | None = None
     description: str | None = None
     price: Decimal | None = None
+    quantity: float | None = 1.0
+    unit: str | None = None
     currency: str | None = None
     source: Source
     source_type: SourceType

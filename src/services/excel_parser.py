@@ -119,7 +119,9 @@ class FuchsExcelParser:
                 PriceCreate(
                     art=art,
                     name=name,
+                    raw_name=product_name, # используем оригинальное имя из первой колонки
                     price=price,
+                    unit=None, # в старых Excel нет колонки с unit
                     currency="EUR",
                     source=Source.FUCHS,
                     source_type=SourceType.EMAIL,
