@@ -30,6 +30,10 @@ def override_async_session(monkeypatch, test_engine):
         "src.services.fuchs_pipeline.async_session",
         _session,
     )
+    monkeypatch.setattr(
+        "src.app.config.settings.GOOGLE_API_KEY", 
+        "dummy_key",
+    )
 
     return async_session_factory
 
@@ -49,7 +53,7 @@ async def test_fuchs_email_with_excel(monkeypatch, override_async_session):
     )
 
     result = await process_fuchs_message(email)
-    assert result.startswith("Сохранено")
+    assert result.startswith("Saved:")
 
     repo = PriceRepository()
     async with override_async_session() as session:
@@ -76,7 +80,7 @@ async def test_fuchs_email_ai_fallback(monkeypatch, override_async_session):
     )
 
     result = await process_fuchs_message(email)
-    assert result.startswith("Сохранено")
+    assert result.startswith("Saved:")
 
     repo = PriceRepository()
     async with override_async_session() as session:
