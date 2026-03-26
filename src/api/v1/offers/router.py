@@ -11,6 +11,8 @@ from src.worker.tasks import generate_offer_pdf_task
 from src.app.config import settings
 from src.core.bitrix import get_bitrix_client
 from src.services.bitrix_service import BitrixService
+from src.services.deal_service import DealService
+from src.services.price_service import PriceService
 from src.core.enums import Role
 
 router = APIRouter(prefix="/offers", tags=["Offers"])
@@ -107,24 +109,37 @@ async def get_my_offer_history(
     tg_id: int | None = None,
 ):
     """
-    История КП для профиля.
-
-    - Если запрос авторизован через Telegram (X-Telegram-Init-Data) — используем current user.
-    - Если запрос авторизован через admin token — можно передать tg_id, чтобы получить историю
-      конкретного пользователя (потому что admin token не знает 'кто я' в Telegram).
+    История сделок для профиля.
+    Ранее возвращала список КП (OfferModel), теперь возвращает список сделок
+    из Bitrix24 для данного пользователя.
     """
-    # admin token case: user может быть системным, поэтому позволяем явный tg_id
     if tg_id is not None and user.tg_id is None:
         repo = UserRepository(db)
         target_user = await repo.get_by_tg_id(tg_id)
         if not target_user:
             raise HTTPException(status_code=404, detail=f"User with tg_id={tg_id} not found")
-        target_user_id = target_user.id
     else:
-        target_user_id = user.id
+        target_user = user
 
-    service = OfferService(db)
-    return await service.get_user_offers(target_user_id)
+    bx = get_bitrix_client()
+    deal_service = DealService(BitrixService(bx), PriceService())
+    
+    # Возвращаем список сделок
+    deals = await deal_service.list_deals_for_user(target_user)
+    
+    # Можно маппить поля под старый стиль или отдавать сырые, 
+    # отдадим немного адаптированный список, чтобы фронту было проще:
+    return [
+        {
+            "id": int(d.get("ID")),
+            "title": d.get("TITLE", ""),
+            "status": d.get("STAGE_ID", "NEW"),
+            "total": float(d.get("OPPORTUNITY", 0)),
+            "currency": d.get("CURRENCY_ID", "KZT"),
+            "assigned_by_id": d.get("ASSIGNED_BY_ID"),
+        }
+        for d in deals
+    ]
 
 
 @router.get("/by-deal/{deal_id}")
