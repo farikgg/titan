@@ -51,7 +51,7 @@ def parse_from_fuchs(self):
             mailbox = settings.EMAIL_USER or "testAI@tpgt-titan.com"
             client = OutlookClient(auth, mailbox=mailbox, folder_name=folder_name)
 
-            messages = await client.fetch_unread_messages(limit=50)
+            messages = await client.fetch_last_messages(limit=50)
 
             async with async_session() as session:
                 for msg in messages:
@@ -63,7 +63,7 @@ def parse_from_fuchs(self):
                     msg_acquired = await lock_service.acquire_lock(msg_lock_key, 120)
                     if not msg_acquired:
                         continue
-                        
+
                     try:
                         # Проверяем, существует ли уже такое письмо в БД
                         existing = await session.scalar(
@@ -84,9 +84,6 @@ def parse_from_fuchs(self):
                         except IntegrityError:
                             await session.rollback()
                             continue
-
-                        # Помечаем как прочитанное сразу после успешной регистрации в БД
-                        await client.mark_as_read(message_id)
 
                         attachments = OutlookClient.parse_attachments(
                             msg.get("attachments")
@@ -201,7 +198,7 @@ def parse_from_requests(self):
             mailbox = settings.EMAIL_USER or "testAI@tpgt-titan.com"
             client = OutlookClient(auth, mailbox=mailbox, folder_name=folder_name)
 
-            messages = await client.fetch_unread_messages(limit=50)
+            messages = await client.fetch_last_messages(limit=50)
 
             async with async_session() as session:
                 for msg in messages:
@@ -213,9 +210,9 @@ def parse_from_requests(self):
                     msg_acquired = await lock_service.acquire_lock(msg_lock_key, 120)
                     if not msg_acquired:
                         continue
-                        
+
                     try:
-                        # Проверяем, существует ли уже такое письмо в БД, чтобы не спамить в логи
+                        # Проверяем, существует ли уже такое письмо в БД
                         existing = await session.scalar(
                             select(EmailProcessing).where(EmailProcessing.message_id == message_id)
                         )
@@ -234,9 +231,6 @@ def parse_from_requests(self):
                         except IntegrityError:
                             await session.rollback()
                             continue
-                        
-                        # Помечаем как прочитанное сразу после успешной регистрации в БД
-                        await client.mark_as_read(message_id)
 
                         attachments = OutlookClient.parse_attachments(
                             msg.get("attachments")
