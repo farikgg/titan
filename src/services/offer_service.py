@@ -169,6 +169,12 @@ class OfferService:
         payment_terms: str | None = None,
         delivery_terms: str | None = None,
         warranty_terms: str | None = None,
+        # Поля для шапки
+        manager_email: str | None = None,
+        client_email: str | None = None,
+        incoterms: str | None = None,
+        deadline: str | None = None,
+        delivery_place: str | None = None,
         notes: str | None = None,
     ) -> OfferModel:
         """
@@ -227,6 +233,14 @@ class OfferService:
         if payment_terms: offer.payment_terms = payment_terms
         if delivery_terms: offer.delivery_terms = delivery_terms
         if warranty_terms: offer.warranty_terms = warranty_terms
+        
+        # Обновляем новые поля шапки
+        if manager_email: offer.manager_email = manager_email
+        if client_email: offer.client_email = client_email
+        if incoterms: offer.incoterms = incoterms
+        if deadline: offer.deadline = deadline
+        if delivery_place: offer.delivery_place = delivery_place
+
         # Если есть заметки или даты, можем добавить их в конец условий или логировать
         if notes:
             current_notes = offer.payment_terms or ""

@@ -488,7 +488,14 @@ async def process_requests_message(msg_dict: dict) -> str:
                 payment_terms=extraction_result.get("payment_terms"),
                 delivery_terms=extraction_result.get("delivery_terms"),
                 warranty_terms=extraction_result.get("warranty_terms"),
-                notes=", ".join(extraction_result.get("dates", [])) if extraction_result.get("dates") else None,
+                # Новые поля из Python-логики (маршрутизация)
+                manager_email=manager_email,
+                client_email=client_email,
+                # Новые поля из Gemini (коммерция)
+                incoterms=extraction_result.get("incoterms"),
+                deadline=extraction_result.get("deadline"),
+                delivery_place=extraction_result.get("delivery_place"),
+                notes=", ".join(extraction_result.get("dates", [])) if extraction_result.get("dates") else extraction_result.get("notes"),
             )
             logger.info(
                 "Создана корзина offer_id=%s для сделки deal_id=%s, товаров: %d",

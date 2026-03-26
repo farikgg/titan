@@ -15,5 +15,8 @@ class ExtractionResult(BaseModel):
     payment_terms: Optional[str] = None
     delivery_terms: Optional[str] = None
     warranty_terms: Optional[str] = None
+    incoterms: Optional[str] = None
+    deadline: Optional[str] = None
+    delivery_place: Optional[str] = None
     notes: Optional[str] = None
     dates: List[str] = [] # В формате YYYY-MM-DD

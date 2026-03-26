@@ -12,7 +12,7 @@ from src.schemas.price_schema import PriceCreate
 
 logger = logging.getLogger(__name__)
 
-# ── System instruction (роль + правила) — отделяем от данных ──
+# ── System instruction (роль + правила) ──
 SYSTEM_INSTRUCTION = """
 Ты — senior аналитик закупок и ценообразования в промышленной компании.
 
@@ -62,12 +62,23 @@ SYSTEM_INSTRUCTION = """
     {
       "art": "string",
       "name": "string",
+      "raw_name": "string",
+      "quantity": number,
+      "unit": "string",
       "price": number | null,
-      "currency": "EUR",
+      "currency": "string",
       "container_size": number | null,
       "container_unit": "L" | "KG" | null
     }
-  ]
+  ],
+  "incoterms": "string | null",
+  "deadline": "string | null",
+  "delivery_place": "string | null",
+  "payment_terms": "string | null",
+  "delivery_terms": "string | null",
+  "warranty_terms": "string | null",
+  "notes": "string | null",
+  "dates": ["YYYY-MM-DD"]
 }
 """.strip()
 
@@ -169,13 +180,13 @@ class FuchsAIParser:
 
         return full_text
 
-    async def parse_to_objects(self, email_body: str, attachment_text: str = "") -> list[PriceCreate]:
+    async def parse_to_objects(self, email_body: str, attachment_text: str = "") -> dict:
         """
         Генерация структурированных данных через Google Gemini
         """
         # Если текста вообще нет — не тратим токены
         if not email_body.strip() and not attachment_text.strip():
-            return []
+            return {"items": []}
 
         MAX_TEXT_LEN = 15_000
         combined_text = f"EMAIL_BODY:\n{email_body}\n\nATTACHMENT_DATA:\n{attachment_text}"[:MAX_TEXT_LEN]
@@ -187,7 +198,7 @@ class FuchsAIParser:
 {combined_text}
 --------------------
 
-Извлеки товарные позиции из данных выше и верни JSON.
+Извлеки позиции и коммерческие условия из данных выше и верни JSON.
 """.strip()
 
         try:
@@ -196,7 +207,7 @@ class FuchsAIParser:
                 contents=user_prompt,
                 config=types.GenerateContentConfig(
                     system_instruction=SYSTEM_INSTRUCTION,
-                    temperature=0,  # Для точности данных ставим 0
+                    temperature=0,
                     response_mime_type="application/json",
                 ),
             )
@@ -208,26 +219,11 @@ class FuchsAIParser:
 
             try:
                 raw_json = json.loads(raw_response)
+                return raw_json
             except JSONDecodeError as e:
                 logger.error(f"Ошибка парсинга, сырой ответ {raw_response}")
-                return []
-
-            items = raw_json.get("items") or []
-            if not isinstance(items, list):
-                return []
-
-            validated_items = []
-            for item in items:
-                try:
-                    # Принудительно ставим источник
-                    item.update({"source": "fuchs", "source_type": "email"})
-                    # Валидация Pydantic
-                    validated_items.append(PriceCreate(**item))
-                except Exception as ve:
-                    logger.warning(f"⚠️ Пропуск товара из-за ошибки валидации: {ve} | Данные: {item}")
-
-            return validated_items
+                return {"items": []}
 
         except Exception as e:
             logger.error(f"🔥 Критическая ошибка ИИ-парсера: {e}")
-            return []
+            return {"items": []}

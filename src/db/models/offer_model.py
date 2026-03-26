@@ -48,6 +48,13 @@ class OfferModel(Base):
     delivery_terms = Column(Text, nullable=True)
     warranty_terms = Column(Text, nullable=True)
 
+    # Новые поля для шапки запроса
+    manager_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    client_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    incoterms: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    deadline: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    delivery_place: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
     # Флаг, включает ли итоговая цена НДС.
     # Используется, в частности, для отображения/скрытия подписи «(без НДС)» в PDF.
     vat_enabled = Column(Boolean, nullable=True)
