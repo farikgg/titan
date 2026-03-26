@@ -59,6 +59,13 @@ def parse_from_fuchs(self):
                     if not message_id:
                         continue
 
+                    # Проверяем, существует ли уже такое письмо в БД
+                    existing = await session.scalar(
+                        select(EmailProcessing).where(EmailProcessing.message_id == message_id)
+                    )
+                    if existing:
+                        continue
+
                     try:
                         session.add(
                             EmailProcessing(
@@ -192,6 +199,13 @@ def parse_from_requests(self):
                 for msg in messages:
                     message_id = msg.get("id")
                     if not message_id:
+                        continue
+
+                    # Проверяем, существует ли уже такое письмо в БД, чтобы не спамить в логи
+                    existing = await session.scalar(
+                        select(EmailProcessing).where(EmailProcessing.message_id == message_id)
+                    )
+                    if existing:
                         continue
 
                     try:
