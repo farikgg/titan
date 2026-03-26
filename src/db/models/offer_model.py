@@ -2,7 +2,7 @@ import enum
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy.orm import Mapped, relationship
+from sqlalchemy.orm import Mapped, relationship, mapped_column
 from sqlalchemy import Column, String, Numeric, Enum, ForeignKey, func, Text, Boolean, Integer, DateTime
 
 from src.db.initialize import Base
