@@ -79,7 +79,16 @@ async def process_fuchs_message(msg_dict: dict) -> str:
         raw_items = extraction_result.get("items", [])
         if not isinstance(raw_items, list):
             raw_items = []
-            
+
+        # Fallback-дата из корневого массива dates (если у товара нет start_date)
+        fallback_date: datetime | None = None
+        raw_dates = extraction_result.get("dates")
+        if isinstance(raw_dates, list) and raw_dates:
+            try:
+                fallback_date = datetime.strptime(raw_dates[0], "%Y-%m-%d")
+            except (ValueError, TypeError):
+                logger.warning("Невалидная дата в dates: %s", raw_dates[0])
+
         for ri in raw_items:
             try:
                 # Парсим даты действия цены из AI-ответа
@@ -93,6 +102,10 @@ async def process_fuchs_message(msg_dict: dict) -> str:
                         ai_valid_from = datetime.strptime(raw_start, "%Y-%m-%d")
                     except (ValueError, TypeError):
                         logger.warning("Невалидная start_date от AI: %s", raw_start)
+
+                # Fallback: если start_date нет, берём первую дату из корневого dates
+                if not ai_valid_from and fallback_date:
+                    ai_valid_from = fallback_date
 
                 if raw_end:
                     try:
