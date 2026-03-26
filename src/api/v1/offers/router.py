@@ -122,10 +122,15 @@ async def get_my_offer_history(
         target_user = user
 
     bx = get_bitrix_client()
-    deal_service = DealService(BitrixService(bx), PriceService())
+    bitrix_service = BitrixService(bx)
     
-    # Возвращаем список сделок
-    deals = await deal_service.list_deals_for_user(target_user)
+    # Чтобы в профиле показывались СТРОГО только свои сделки (даже для админов)
+    # мы напрямую дергаем get_deals по bitrix_user_id текущего юзера.
+    bitrix_user_id = getattr(target_user, "bitrix_user_id", None)
+    if bitrix_user_id:
+        deals = await bitrix_service.get_deals(bitrix_user_id=bitrix_user_id)
+    else:
+        deals = []
     
     stage_name_map = {
         "C9:NEW": "Интерес или ТКП",
@@ -137,19 +142,27 @@ async def get_my_offer_history(
         "C9:UC_BVSRBV": "Конкуренты",
     }
 
-    # Можно маппить поля под старый стиль или отдавать сырые, 
-    # отдадим немного адаптированный список, чтобы фронту было проще:
-    return [
-        {
+    result = []
+    for d in deals:
+        raw_title = d.get("TITLE") or ""
+        # В Битриксе сделки создавались с префиксом "КП #...", фронт хочет видеть "Сделка #..."
+        if raw_title.startswith("КП #"):
+            title = raw_title.replace("КП #", "Сделка #", 1)
+        elif not raw_title:
+            title = f"Сделка #{d.get('ID')}"
+        else:
+            title = raw_title
+
+        result.append({
             "id": int(d.get("ID", 0)),
-            "title": d.get("TITLE") or f"Сделка #{d.get('ID')}",
+            "title": title,
             "status": stage_name_map.get(d.get("STAGE_ID"), d.get("STAGE_ID", "NEW")),
             "total": float(d.get("OPPORTUNITY", 0)),
             "currency": d.get("CURRENCY_ID", "KZT"),
             "assigned_by_id": d.get("ASSIGNED_BY_ID"),
-        }
-        for d in deals
-    ]
+        })
+
+    return result
 
 
 @router.get("/by-deal/{deal_id}")
