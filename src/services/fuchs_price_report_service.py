@@ -63,6 +63,16 @@ class FuchsPriceReportService:
 
         df = pd.DataFrame(rows)
 
+        if df.empty:
+            # Если данных нет, создаем пустой DataFrame с нужными колонками,
+            # чтобы избежать KeyError при фильтрации.
+            df = pd.DataFrame(columns=[
+                "art", "name", "price", "currency", "container_size",
+                "container_unit", "unit_price", "unit_measure", "unit_price_missing",
+                "first_seen_at", "valid_from", "valid_days", "days_left",
+                "valid_to", "status", "email_message_id", "updated_at"
+            ])
+
         # Фильтруем только проблемные цены
         df_expired = df[df["status"] == "expired"].copy()
         df_expiring = df[df["status"] == "expiring_soon"].copy()
