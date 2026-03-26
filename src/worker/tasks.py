@@ -59,40 +59,48 @@ def parse_from_fuchs(self):
                     if not message_id:
                         continue
 
-                    # Проверяем, существует ли уже такое письмо в БД
-                    existing = await session.scalar(
-                        select(EmailProcessing).where(EmailProcessing.message_id == message_id)
-                    )
-                    if existing:
+                    msg_lock_key = f"email_processing:{message_id}"
+                    msg_acquired = await lock_service.acquire_lock(msg_lock_key, 120)
+                    if not msg_acquired:
                         continue
-
+                        
                     try:
-                        session.add(
-                            EmailProcessing(
-                                message_id=message_id,
-                                status="NEW"
-                            )
+                        # Проверяем, существует ли уже такое письмо в БД
+                        existing = await session.scalar(
+                            select(EmailProcessing).where(EmailProcessing.message_id == message_id)
                         )
-                        await session.commit()
+                        if existing:
+                            continue
 
-                    except IntegrityError:
-                        await session.rollback()
-                        continue
+                        try:
+                            session.add(
+                                EmailProcessing(
+                                    message_id=message_id,
+                                    status="NEW"
+                                )
+                            )
+                            await session.commit()
 
-                    # Помечаем как прочитанное сразу после успешной регистрации в БД
-                    await client.mark_as_read(message_id)
+                        except IntegrityError:
+                            await session.rollback()
+                            continue
 
-                    attachments = OutlookClient.parse_attachments(
-                        msg.get("attachments")
-                    )
+                        # Помечаем как прочитанное сразу после успешной регистрации в БД
+                        await client.mark_as_read(message_id)
 
-                    ai_process.delay({
-                        "message_ids": message_id,
-                        "subject": msg.get("subject"),
-                        "body": msg.get("bodyPreview", ""),
-                        "receivedDateTime": msg.get("receivedDateTime"),
-                        "attachments": attachments,
-                    })
+                        attachments = OutlookClient.parse_attachments(
+                            msg.get("attachments")
+                        )
+
+                        ai_process.delay({
+                            "message_ids": message_id,
+                            "subject": msg.get("subject"),
+                            "body": msg.get("bodyPreview", ""),
+                            "receivedDateTime": msg.get("receivedDateTime"),
+                            "attachments": attachments,
+                        })
+                    finally:
+                        await lock_service.release_lock(msg_lock_key)
         finally:
             await lock_service.release_lock(lock_key)
 
@@ -201,52 +209,60 @@ def parse_from_requests(self):
                     if not message_id:
                         continue
 
-                    # Проверяем, существует ли уже такое письмо в БД, чтобы не спамить в логи
-                    existing = await session.scalar(
-                        select(EmailProcessing).where(EmailProcessing.message_id == message_id)
-                    )
-                    if existing:
+                    msg_lock_key = f"email_processing:{message_id}"
+                    msg_acquired = await lock_service.acquire_lock(msg_lock_key, 120)
+                    if not msg_acquired:
                         continue
-
+                        
                     try:
-                        session.add(
-                            EmailProcessing(
-                                message_id=message_id,
-                                status="NEW"
-                            )
+                        # Проверяем, существует ли уже такое письмо в БД, чтобы не спамить в логи
+                        existing = await session.scalar(
+                            select(EmailProcessing).where(EmailProcessing.message_id == message_id)
                         )
-                        await session.commit()
+                        if existing:
+                            continue
 
-                    except IntegrityError:
-                        await session.rollback()
-                        continue
-                    
-                    # Помечаем как прочитанное сразу после успешной регистрации в БД
-                    await client.mark_as_read(message_id)
+                        try:
+                            session.add(
+                                EmailProcessing(
+                                    message_id=message_id,
+                                    status="NEW"
+                                )
+                            )
+                            await session.commit()
 
-                    attachments = OutlookClient.parse_attachments(
-                        msg.get("attachments")
-                    )
+                        except IntegrityError:
+                            await session.rollback()
+                            continue
+                        
+                        # Помечаем как прочитанное сразу после успешной регистрации в БД
+                        await client.mark_as_read(message_id)
 
-                    # Извлекаем данные письма
-                    sender_info = msg.get("sender", {}).get("emailAddress", {})
-                    sender_email = sender_info.get("address", "")
-                    # Получатели письма (кому пишет клиент - менеджеры)
-                    to_recipients = msg.get("toRecipients", [])
+                        attachments = OutlookClient.parse_attachments(
+                            msg.get("attachments")
+                        )
 
-                    requests_process.delay({
-                        "message_ids": message_id,
-                        "subject": msg.get("subject", ""),
-                        "body": msg.get("body", {}).get("content", ""),
-                        "bodyPreview": msg.get("bodyPreview", ""),
-                        "receivedDateTime": msg.get("receivedDateTime"),
-                        "from": sender_email,
-                        "sender": {
-                            "emailAddress": sender_info,
-                        },
-                        "toRecipients": to_recipients,  # Добавляем получателей для определения менеджера
-                        "attachments": attachments,
-                    })
+                        # Извлекаем данные письма
+                        sender_info = msg.get("sender", {}).get("emailAddress", {})
+                        sender_email = sender_info.get("address", "")
+                        # Получатели письма (кому пишет клиент - менеджеры)
+                        to_recipients = msg.get("toRecipients", [])
+
+                        requests_process.delay({
+                            "message_ids": message_id,
+                            "subject": msg.get("subject", ""),
+                            "body": msg.get("body", {}).get("content", ""),
+                            "bodyPreview": msg.get("bodyPreview", ""),
+                            "receivedDateTime": msg.get("receivedDateTime"),
+                            "from": sender_email,
+                            "sender": {
+                                "emailAddress": sender_info,
+                            },
+                            "toRecipients": to_recipients,  # Добавляем получателей для определения менеджера
+                            "attachments": attachments,
+                        })
+                    finally:
+                        await lock_service.release_lock(msg_lock_key)
         finally:
             await lock_service.release_lock(lock_key)
 
