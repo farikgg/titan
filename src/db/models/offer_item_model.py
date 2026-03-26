@@ -17,11 +17,11 @@ class OfferItemModel(Base):
 
     sku: Mapped[str] = mapped_column(String(150))
     name: Mapped[str] = mapped_column(String(255))
-    raw_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    raw_name: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    unit: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
     price: Mapped[Decimal] = mapped_column(Numeric(12, 2))
-    quantity: Mapped[int] = mapped_column(default=1)
-    unit: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    quantity: Mapped[float] = mapped_column(Numeric(12, 3), default=1.0)
     total: Mapped[Decimal] = mapped_column(Numeric(12, 2))
 
     offer = relationship("OfferModel", back_populates="items")
