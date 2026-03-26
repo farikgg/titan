@@ -82,11 +82,33 @@ async def process_fuchs_message(msg_dict: dict) -> str:
             
         for ri in raw_items:
             try:
-                # Мапим поля из ExtractionItem в PriceCreate
+                # Парсим даты действия цены из AI-ответа
+                ai_valid_from = None
+                ai_valid_days = None
+                raw_start = ri.get("start_date")
+                raw_end = ri.get("end_date")
+
+                if raw_start:
+                    try:
+                        ai_valid_from = datetime.strptime(raw_start, "%Y-%m-%d")
+                    except (ValueError, TypeError):
+                        logger.warning("Невалидная start_date от AI: %s", raw_start)
+
+                if raw_end:
+                    try:
+                        end_dt = datetime.strptime(raw_end, "%Y-%m-%d")
+                        if ai_valid_from:
+                            delta = (end_dt - ai_valid_from).days
+                            if delta > 0:
+                                ai_valid_days = delta
+                    except (ValueError, TypeError):
+                        logger.warning("Невалидная end_date от AI: %s", raw_end)
+
                 item_data = {
                     "art": ri.get("art"),
                     "name": ri.get("name"),
                     "raw_name": ri.get("raw_name"),
+                    "description": ri.get("description"),
                     "price": ri.get("price"),
                     "quantity": ri.get("quantity", 1.0),
                     "unit": ri.get("unit"),
@@ -94,8 +116,14 @@ async def process_fuchs_message(msg_dict: dict) -> str:
                     "container_size": ri.get("container_size"),
                     "container_unit": ri.get("container_unit"),
                     "source": "fuchs",
-                    "source_type": "email"
+                    "source_type": "email",
                 }
+
+                if ai_valid_from:
+                    item_data["valid_from"] = ai_valid_from
+                if ai_valid_days:
+                    item_data["valid_days"] = ai_valid_days
+
                 items.append(PriceCreate(**item_data))
             except Exception as e:
                 logger.warning(f"Ошибка маппинга товара AI: {e}")
@@ -118,8 +146,8 @@ async def process_fuchs_message(msg_dict: dict) -> str:
 
         for item in valid_items:
             item.email_message_id = message_id
-            # FUCHS: фиксируем дату начала действия цены и срок
-            if received_at:
+            # valid_from: приоритет у даты из AI (start_date), fallback — дата получения письма
+            if not item.valid_from and received_at:
                 item.valid_from = received_at
             if getattr(item, "valid_days", None) is None:
                 item.valid_days = 90
