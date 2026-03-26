@@ -567,11 +567,8 @@ class BitrixService:
 
     async def get_company(self, company_id: int) -> Optional[Dict]:
         """Получает компанию по ID из Bitrix24."""
-        from anyio import to_thread
-
         try:
-            result = await to_thread.run_sync(
-                self.bx.call,
+            result = await self.bx.call(
                 "crm.company.get",
                 {"id": company_id},
             )
@@ -608,12 +605,8 @@ class BitrixService:
         query: строка, которую ввёл пользователь (начало названия, часть слова и т.п.)
         limit: максимальное количество результатов.
         """
-        from anyio import to_thread
-
         try:
-            # Используем get_all с фильтром по названию (частичное совпадение)
-            result = await to_thread.run_sync(
-                self.bx.get_all,
+            result = await self.bx.get_all(
                 "crm.company.list",
                 {
                     "filter": {
@@ -625,7 +618,6 @@ class BitrixService:
                         "PHONE",
                         "EMAIL",
                     ],
-                    # Ограничиваем количество результатов на уровне кода
                 },
             )
 
@@ -648,8 +640,6 @@ class BitrixService:
         """
         Поиск пользователей в Bitrix24 по ФИО или Email.
         """
-        from anyio import to_thread
-
         try:
             filter_dict = {}
             if email_query:
@@ -659,8 +649,7 @@ class BitrixService:
             else:
                 return []
 
-            result = await to_thread.run_sync(
-                self.bx.get_all,
+            result = await self.bx.get_all(
                 "user.get",
                 {
                     "filter": filter_dict,
@@ -706,8 +695,7 @@ class BitrixService:
             if company_id is not None:
                 filter_dict["COMPANY_ID"] = company_id
 
-            result = await to_thread.run_sync(
-                self.bx.get_all,
+            result = await self.bx.get_all(
                 "crm.contact.list",
                 {
                     "filter": filter_dict,

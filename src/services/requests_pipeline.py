@@ -141,19 +141,21 @@ async def extract_client_info(
 Верни ТОЛЬКО JSON."""
 
     try:
-        response = await ai_parser.client.chat.completions.create(
+        import json
+        from google.genai import types
+
+        response = await ai_parser.client.aio.models.generate_content(
             model=ai_parser.model,
-            messages=[
-                {"role": "system", "content": "Ты эксперт по анализу переписки. Отвечай только JSON."},
-                {"role": "user", "content": prompt},
-            ],
-            response_format={"type": "json_object"},
-            temperature=0.1,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                system_instruction="Ты эксперт по анализу переписки. Отвечай только JSON.",
+                temperature=0.1,
+                response_mime_type="application/json",
+            ),
         )
 
-        import json
-        result = json.loads(response.choices[0].message.content)
-        
+        result = json.loads(response.text)
+
         return {
             "company_name": result.get("company_name"),
             "contact_name": result.get("contact_name"),
@@ -490,7 +492,7 @@ async def process_requests_message(msg_dict: dict) -> str:
                 warranty_terms=extraction_result.get("warranty_terms"),
                 # Новые поля из Python-логики (маршрутизация)
                 manager_email=manager_email,
-                client_email=client_email,
+                client_email=contact_email,
                 # Новые поля из Gemini (коммерция)
                 incoterms=extraction_result.get("incoterms"),
                 deadline=extraction_result.get("deadline"),
