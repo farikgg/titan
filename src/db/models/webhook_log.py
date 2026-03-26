@@ -1,4 +1,4 @@
-from sqlalchemy import JSON, String, func
+from sqlalchemy import JSON, String, func, DateTime
 from sqlalchemy.orm import Mapped, mapped_column
 from datetime import datetime
 
