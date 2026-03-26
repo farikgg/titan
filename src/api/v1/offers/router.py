@@ -127,13 +127,23 @@ async def get_my_offer_history(
     # Возвращаем список сделок
     deals = await deal_service.list_deals_for_user(target_user)
     
+    stage_name_map = {
+        "C9:NEW": "Интерес или ТКП",
+        "C9:FINAL_INVOICE": "Договор заключен. В работе",
+        "C9:EXECUTING": "АВР и Накладная подписаны",
+        "C9:WON": "Сделка успешна",
+        "C9:LOSE": "Нет финансирования",
+        "C9:APOLOGY": "Анализ причины провала",
+        "C9:UC_BVSRBV": "Конкуренты",
+    }
+
     # Можно маппить поля под старый стиль или отдавать сырые, 
     # отдадим немного адаптированный список, чтобы фронту было проще:
     return [
         {
-            "id": int(d.get("ID")),
-            "title": d.get("TITLE", ""),
-            "status": d.get("STAGE_ID", "NEW"),
+            "id": int(d.get("ID", 0)),
+            "title": d.get("TITLE") or f"Сделка #{d.get('ID')}",
+            "status": stage_name_map.get(d.get("STAGE_ID"), d.get("STAGE_ID", "NEW")),
             "total": float(d.get("OPPORTUNITY", 0)),
             "currency": d.get("CURRENCY_ID", "KZT"),
             "assigned_by_id": d.get("ASSIGNED_BY_ID"),
