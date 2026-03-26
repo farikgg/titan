@@ -15,12 +15,11 @@ class OutlookClient:
             auth: GraphAuth instance
             mailbox: Email address (один аккаунт, например "testAI@tpgt-titan.com").
                     If None, uses default from settings or "testAI@tpgt-titan.com"
-            folder_name: Название папки для чтения писем (например, "Inbox" или "Requests").
-                        По умолчанию "Inbox"
+            folder_name: Принимается для обратной совместимости, но игнорируется.
+                        Всегда читаем из well-known папки "inbox".
         """
         self.auth = auth
         self.mailbox = mailbox
-        self.folder_name = folder_name
 
     async def _headers(self):
         token = await self.auth.get_token()
@@ -31,14 +30,10 @@ class OutlookClient:
 
     async def fetch_last_messages(self, limit: int = 50) -> List[dict]:
         """
-        Получает последние письма из указанной папки.
-        Если папка не указана, использует "Inbox".
+        Получает последние письма из папки Inbox (well-known name).
         """
         mailbox = self.mailbox or "testAI@tpgt-titan.com"
-        folder_name = self.folder_name or "Inbox"
-        
-        # Используем имя папки напрямую (Graph API поддерживает "Inbox" и др. в URL)
-        url = f"{GRAPH_BASE}/users/{mailbox}/mailFolders/{folder_name}/messages"
+        url = f"{GRAPH_BASE}/users/{mailbox}/mailFolders/inbox/messages"
         params = {
             "$top": limit,
             "$orderby": "receivedDateTime DESC",
