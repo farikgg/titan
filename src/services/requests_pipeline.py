@@ -40,30 +40,63 @@ async def extract_client_info(
     parsed_items: list | None = None,
 ) -> dict:
     """
-    Извлекает информацию о клиенте и менеджере из письма с помощью AI.
+    Извлекает информацию о клиенте и менеджере из письма с помощью AI и логики доменов.
     
-    Args:
-        subject: Тема письма
-        body: Текст письма
-        sender: Email отправителя
-        to_recipients: Список получателей (кому пишет клиент) - опционально
-        parsed_items: Список товаров из письма - опционально (для контекста)
-    
-    Returns:
-        {
-            "company_name": str | None,
-            "contact_name": str | None,  # Имя клиента, который запрашивает
-            "contact_email": str | None,
-            "contact_phone": str | None,
-            "manager_name": str | None,  # Имя менеджера, кому пишет клиент
-            "manager_email": str | None,  # Email менеджера
-        }
+    Логика:
+    1. Наши домены: @tpgt-titan.com, @tpgt.kz
+    2. МЕНЕДЖЕР: Последний отправитель с нашего домена (кто переслал или прямой получатель).
+    3. КЛИЕНТ: Первый (оригинальный) отправитель с внешнего домена в истории пересылки.
     """
+    CORPORATE_DOMAINS = ["tpgt-titan.com", "tpgt.kz"]
+    
+    def is_corporate(email: str) -> bool:
+        if not email: return False
+        return any(email.lower().endswith(f"@{domain}") for domain in CORPORATE_DOMAINS)
+
+    # 1. Поиск МЕНЕДЖЕРА (последний наш)
+    # Если отправитель наш - он и есть менеджер
+    manager_email = sender if is_corporate(sender) else None
+    
+    # 2. Поиск КЛИЕНТА (первый внешний в истории)
+    # Если отправитель внешний - он может быть клиентом
+    client_email = sender if not is_corporate(sender) else None
+    
+    # Парсим историю пересылки (Forwarded message)
+    # Ищем блоки типа "From: ...", "От: ..."
+    import re
+    # Регулярка для извлечения email из строк типа "From: Name <email@domain.com>" или просто "email@domain.com"
+    email_regex = r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"
+    
+    # Ищем все упоминания "From:" или "От:" в тексте
+    forwarded_from_lines = re.findall(r"(?:From|От|Отправитель):\s*(.*)", body, re.IGNORECASE)
+    
+    extracted_emails = []
+    for line in forwarded_from_lines:
+        found = re.findall(email_regex, line)
+        if found:
+            extracted_emails.extend(found)
+    
+    # Также проверяем отправителя в самом верху истории
+    all_potential_emails = [sender] + extracted_emails
+    
+    # Определяем клиента: первый внешний email в цепочке (начиная с конца истории, т.е. начала переписки)
+    # Но обычно история идет сверху вниз (новое сверху). Оригинальный отправитель в самом низу.
+    external_emails = [e for e in all_potential_emails if not is_corporate(e)]
+    if external_emails:
+        client_email = external_emails[-1] # Самый первый отправитель (дно истории)
+        
+    # Определяем менеджера: если отправитель корпоративный - он менеджер.
+    if not manager_email:
+        corp_emails = [e for e in all_potential_emails if is_corporate(e)]
+        if corp_emails:
+            manager_email = corp_emails[0] # Самый последний переславший (верх истории)
+
     ai_parser = FuchsAIParser()
     
-    # Формируем информацию о получателях
+    # Формируем информацию о получателях для AI
     to_info = ""
     if to_recipients:
+        # Извлекаем получателей
         to_emails = []
         to_names = []
         for recipient in to_recipients:
@@ -83,103 +116,61 @@ async def extract_client_info(
                 to_info += f"Имена: {', '.join(to_names)}\n"
             if to_emails:
                 to_info += f"Email: {', '.join(to_emails)}\n"
-    
-    # Формируем информацию о товарах (для контекста)
-    items_info = ""
-    if parsed_items:
-        items_summary = []
-        for item in parsed_items[:10]:  # Ограничиваем до 10 товаров
-            art = item.get("art", "") or item.get("sku", "")
-            name = item.get("name", "")
-            qty = item.get("quantity", 1)
-            if art:
-                items_summary.append(f"- {art} ({name or 'без названия'}) x{qty}")
-        if items_summary:
-            items_info = f"\nЗапрашиваемые товары:\n" + "\n".join(items_summary)
-    
-    # Формируем промпт для LLM
-    body_limited = body[:3000] if body else ""  # Увеличиваем лимит для лучшего контекста
-    prompt = f"""Ты анализируешь письмо от клиента, который запрашивает товары у менеджера компании.
 
-ВАЖНО: Различай:
-- КЛИЕНТ (отправитель письма) - тот, кто запрашивает товары
-- МЕНЕДЖЕР (получатель письма) - сотрудник компании, кому пишет клиент
+    # AI теперь помогает только с именами и телефонами, а email-ы мы уже определили надежнее
+    body_limited = body[:3000] if body else ""
+    prompt = f"""Ты анализируешь историю переписки.
+Мы определили:
+- КЛИЕНТ (Email): {client_email or 'неизвестно'}
+- МЕНЕДЖЕР (Email): {manager_email or 'неизвестно'}
+
+Твоя задача - найти ИМЕНА и ТЕЛЕФОНЫ для этих людей в тексте письма.
 
 Данные письма:
 Тема: {subject}
-Отправитель (клиент): {sender}
-{to_info}
-{items_info}
-
 Текст письма:
 {body_limited}
 
-Извлеки и верни JSON со следующими полями:
-
-1. КЛИЕНТ (тот, кто запрашивает):
-   - contact_name: полное ФИО клиента (из подписи, текста письма, или имени отправителя)
-   - company_name: название компании клиента (если упоминается)
-   - contact_email: email клиента (обычно это отправитель {sender}, но проверь в тексте)
-   - contact_phone: телефон клиента (мобильный, рабочий - любой найденный)
-
-2. МЕНЕДЖЕР (кому пишет клиент):
-   - manager_name: имя/ФИО менеджера (из текста "Уважаемый Иван", "Добрый день, Петр", или из подписи получателя)
-   - manager_email: email менеджера (из списка получателей или упоминаний в тексте)
-
-ПРАВИЛА ИЗВЛЕЧЕНИЯ:
-- Если в тексте есть обращение "Уважаемый Иван" или "Добрый день, Петр" - это manager_name
-- Если есть подпись с именем в конце письма - это может быть contact_name (клиент) или manager_name (если это ответ)
-- Телефон ищи в форматах: +7..., 8..., (7...), и т.д.
-- Компанию клиента ищи в подписи или в начале письма
-- Если информации нет - верни null для соответствующего поля
-
-Верни ТОЛЬКО валидный JSON без дополнительных комментариев."""
+Извлеки и верни JSON:
+{{
+    "contact_name": "ФИО клиента (кто самый первый отправил запрос)",
+    "company_name": "компания клиента",
+    "contact_phone": "телефон клиента",
+    "manager_name": "имя нашего менеджера (кто последний переслал или кому адресовано)"
+}}
+Верни ТОЛЬКО JSON."""
 
     try:
-        # Используем LLM для извлечения структурированных данных
         response = await ai_parser.client.chat.completions.create(
             model=ai_parser.model,
             messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "Ты эксперт по анализу деловой переписки. "
-                        "Твоя задача - точно определить, кто клиент (запрашивает товары), "
-                        "а кто менеджер (получает запрос). "
-                        "Извлекай структурированную информацию: имена, компании, контакты. "
-                        "Отвечай ТОЛЬКО валидным JSON без дополнительного текста."
-                    ),
-                },
+                {"role": "system", "content": "Ты эксперт по анализу переписки. Отвечай только JSON."},
                 {"role": "user", "content": prompt},
             ],
             response_format={"type": "json_object"},
-            temperature=0.2,  # Снижаем температуру для более точного извлечения
+            temperature=0.1,
         )
 
         import json
         result = json.loads(response.choices[0].message.content)
         
-        # Fallback: если email клиента не найден, используем отправителя
-        contact_email = result.get("contact_email") or sender
-        
         return {
             "company_name": result.get("company_name"),
             "contact_name": result.get("contact_name"),
-            "contact_email": contact_email,
+            "contact_email": client_email or sender,
             "contact_phone": result.get("contact_phone"),
             "manager_name": result.get("manager_name"),
-            "manager_email": result.get("manager_email"),
+            "manager_email": manager_email,
         }
     except Exception:
-        logger.exception("Ошибка извлечения данных клиента через AI")
-        # Fallback: используем отправителя как email клиента
+        logger.exception("Ошибка AI уточнения данных")
         return {
             "company_name": None,
             "contact_name": None,
-            "contact_email": sender,
+            "contact_email": client_email or sender,
             "contact_phone": None,
             "manager_name": None,
-            "manager_email": None,
+            "manager_email": manager_email,
         }
 
 
@@ -230,30 +221,26 @@ async def find_items_in_prices(
 ) -> list[dict]:
     """
     Ищет товары из письма в прайсах (prices таблица).
-    
-    Args:
-        db_session: SQLAlchemy session
-        parsed_items: список товаров из парсера [{"art": "...", "name": "...", "quantity": 1}]
-    
-    Returns:
-        Список товаров с флагом "found": [{"art": "...", "name": "...", "price": 100.0, "quantity": 1, "found": True/False}]
     """
     result_items = []
 
     for item in parsed_items:
         art = item.get("art") or item.get("sku", "")
         name = item.get("name", "")
-        quantity = int(item.get("quantity", 1))
+        raw_name = item.get("raw_name")
+        quantity = float(item.get("quantity", 1))
+        unit = item.get("unit")
 
         if not art:
-            # Если артикула нет - помечаем как не найден
             result_items.append({
                 "art": "",
                 "sku": "",
                 "name": name or "Товар без артикула",
-                "price": 0.0,
+                "raw_name": raw_name,
+                "price": float(item.get("price", 0)),
                 "quantity": quantity,
-                "currency": "KZT",
+                "unit": unit,
+                "currency": item.get("currency", "KZT"),
                 "found": False,
             })
             continue
@@ -264,24 +251,26 @@ async def find_items_in_prices(
         )
 
         if price_obj:
-            # Товар найден
             result_items.append({
                 "art": art,
                 "sku": art,
                 "name": price_obj.name,
+                "raw_name": raw_name,
                 "price": float(price_obj.price),
                 "quantity": quantity,
+                "unit": unit or getattr(price_obj, "unit", None),
                 "currency": price_obj.currency or "KZT",
                 "found": True,
             })
         else:
-            # Товар не найден - оставляем с исходными данными
             result_items.append({
                 "art": art,
                 "sku": art,
                 "name": name or f"Товар {art}",
+                "raw_name": raw_name,
                 "price": float(item.get("price", 0)),
                 "quantity": quantity,
+                "unit": unit,
                 "currency": item.get("currency", "KZT"),
                 "found": False,
             })
@@ -335,9 +324,11 @@ async def process_requests_message(msg_dict: dict) -> str:
                 break
 
     # -------- 2. ПАРСИНГ ТОВАРОВ: AI fallback --------
+    extraction_result = {}
     if not items:
         attachment_text = ai_parser.extract_text_from_attachments(attachments)
-        items = await ai_parser.parse_to_objects(body, attachment_text)
+        extraction_result = await ai_parser.parse_to_objects(body, attachment_text)
+        items = extraction_result.get("items", [])
 
     if not items:
         return "No data"
@@ -345,19 +336,24 @@ async def process_requests_message(msg_dict: dict) -> str:
     # Конвертируем в словари для дальнейшей обработки
     parsed_items = []
     for item in items:
-        price_raw = getattr(item, "price", 0)
-        if price_raw is None:
-            price_val = 0.0
-        else:
-            price_val = float(price_raw)
+        # Если это объект Pydantic (из Excel) или дикт (из AI)
+        art = getattr(item, "art", "") if not isinstance(item, dict) else item.get("art", "")
+        name = getattr(item, "name", "") if not isinstance(item, dict) else item.get("name", "")
+        raw_name = getattr(item, "raw_name", None) if not isinstance(item, dict) else item.get("raw_name")
+        price = getattr(item, "price", 0) if not isinstance(item, dict) else item.get("price", 0)
+        currency = getattr(item, "currency", "KZT") if not isinstance(item, dict) else item.get("currency", "KZT")
+        quantity = getattr(item, "quantity", 1.0) if not isinstance(item, dict) else item.get("quantity", 1.0)
+        unit = getattr(item, "unit", None) if not isinstance(item, dict) else item.get("unit")
 
         parsed_items.append(
             {
-                "art": getattr(item, "art", "") or "",
-                "name": getattr(item, "name", "") or "",
-                "price": price_val,
-                "currency": getattr(item, "currency", "KZT") or "KZT",
-                "quantity": int(getattr(item, "quantity", 1) or 1),
+                "art": art or "",
+                "name": name or "",
+                "raw_name": raw_name,
+                "price": float(price or 0),
+                "currency": currency or "KZT",
+                "quantity": float(quantity or 1.0),
+                "unit": unit,
             }
         )
 
@@ -489,6 +485,10 @@ async def process_requests_message(msg_dict: dict) -> str:
                 bitrix_user_id=assigned_by_id,
                 items=items_with_status,
                 currency=currency,
+                payment_terms=extraction_result.get("payment_terms"),
+                delivery_terms=extraction_result.get("delivery_terms"),
+                warranty_terms=extraction_result.get("warranty_terms"),
+                notes=", ".join(extraction_result.get("dates", [])) if extraction_result.get("dates") else None,
             )
             logger.info(
                 "Создана корзина offer_id=%s для сделки deal_id=%s, товаров: %d",

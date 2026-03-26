@@ -165,6 +165,11 @@ class OfferService:
         bitrix_user_id: int,
         items: list[dict],
         currency: str | None = None,
+        # Добавляем новые поля условий
+        payment_terms: str | None = None,
+        delivery_terms: str | None = None,
+        warranty_terms: str | None = None,
+        notes: str | None = None,
     ) -> OfferModel:
         """
         Создаёт корзину (Offer) для сделки из парсера писем.
@@ -174,9 +179,6 @@ class OfferService:
             bitrix_user_id: Bitrix user ID ответственного менеджера
             items: список товаров [{"sku": "...", "name": "...", "price": 100.0, "quantity": 1, "found": True/False}]
             currency: валюта (если не указана, берётся из первого товара)
-        
-        Returns:
-            OfferModel: созданная корзина
         """
         from src.repositories.user_repo import UserRepository
         
@@ -185,13 +187,11 @@ class OfferService:
         user = await user_repo.get_by_bitrix_user_id(bitrix_user_id)
         
         if not user:
-            # Если пользователь не найден, используем дефолтного (DEFAULT_ASSIGNED_BY_ID = 109)
-            # Ищем системного пользователя или создаём заглушку
             logger.warning(
                 "User with bitrix_user_id=%s not found, using default user_id=1",
                 bitrix_user_id
             )
-            user_id = 1  # Дефолтный системный пользователь
+            user_id = 1
         else:
             user_id = user.id
 
@@ -204,30 +204,40 @@ class OfferService:
         )
 
         if existing:
-            logger.info(
-                "Active offer already exists for deal_id=%s, offer_id=%s",
-                deal_id,
-                existing.id
+            logger.info("Updating existing offer %s", existing.id)
+            offer = existing
+        else:
+            # Определяем валюту
+            if not currency and items:
+                currency = items[0].get("currency", "KZT")
+            currency = currency or "KZT"
+
+            # Создаём корзину
+            offer = OfferModel(
+                user_id=user_id,
+                status=OfferStatus.DRAFT,
+                total=Decimal("0.00"),
+                currency=currency,
+                bitrix_deal_id=str(deal_id),
             )
-            return existing
+            self.db.add(offer)
+            await self.db.flush()
 
-        # Определяем валюту
-        if not currency and items:
-            # Пробуем взять из первого товара или дефолт
-            currency = items[0].get("currency", "KZT")
-        currency = currency or "KZT"
+        # Обновляем условия КП, если они пришли
+        if payment_terms: offer.payment_terms = payment_terms
+        if delivery_terms: offer.delivery_terms = delivery_terms
+        if warranty_terms: offer.warranty_terms = warranty_terms
+        # Если есть заметки или даты, можем добавить их в конец условий или логировать
+        if notes:
+            current_notes = offer.payment_terms or ""
+            if notes not in current_notes:
+                offer.payment_terms = (current_notes + f"\nЗаметки: {notes}").strip()
 
-        # Создаём корзину
-        offer = OfferModel(
-            user_id=user_id,
-            status=OfferStatus.DRAFT,
-            total=Decimal("0.00"),
-            currency=currency,
-            bitrix_deal_id=str(deal_id),
-        )
-        self.db.add(offer)
-        await self.db.flush()
-        await self.db.refresh(offer)
+        # Очищаем старые товары перед обновлением, если это существующий оффер
+        if existing:
+            await self.db.execute(
+                delete(OfferItemModel).where(OfferItemModel.offer_id == offer.id)
+            )
 
         # Добавляем товары в корзину
         from src.db.models.price_model import PriceModel
@@ -235,50 +245,34 @@ class OfferService:
         for item_data in items:
             sku = item_data.get("sku") or item_data.get("art", "")
             name = item_data.get("name", "Товар не найден")
-            price = Decimal(str(item_data.get("price", 0)))
-            quantity = int(item_data.get("quantity", 1))
-            found = item_data.get("found", False)  # True если товар найден в прайсах
+            raw_name = item_data.get("raw_name")
+            price = Decimal(str(item_data.get("price") or 0))
+            quantity = float(item_data.get("quantity", 1))
+            unit = item_data.get("unit")
+            found = item_data.get("found", False)
 
-            # Если товар не найден, всё равно добавляем в корзину с пометкой
-            if not found:
-                # Добавляем как "не найден" - без привязки к PriceModel
-                item = OfferItemModel(
-                    offer_id=offer.id,
-                    sku=sku or f"NOT_FOUND_{len(items)}",
-                    name=f"[НЕ НАЙДЕН] {name}",
-                    price=price,
-                    quantity=quantity,
-                    total=price * quantity,
-                )
-                self.db.add(item)
-            else:
-                # Ищем товар в прайсах
+            # Ищем товар в прайсах для нормализованного имени
+            price_obj = None
+            if found:
                 price_obj = await self.db.scalar(
                     select(PriceModel).where(PriceModel.art == sku)
                 )
 
-                if price_obj:
-                    # Товар найден в прайсах - добавляем нормально
-                    item = OfferItemModel(
-                        offer_id=offer.id,
-                        sku=sku,
-                        name=price_obj.name,
-                        price=price_obj.price,
-                        quantity=quantity,
-                        total=price_obj.price * quantity,
-                    )
-                    self.db.add(item)
-                else:
-                    # Товар был помечен как найден, но в БД его нет - добавляем как "не найден"
-                    item = OfferItemModel(
-                        offer_id=offer.id,
-                        sku=sku or f"NOT_FOUND_{len(items)}",
-                        name=f"[НЕ НАЙДЕН] {name}",
-                        price=price,
-                        quantity=quantity,
-                        total=price * quantity,
-                    )
-                    self.db.add(item)
+            current_name = price_obj.name if price_obj else name
+            if not found and not current_name.startswith("[НЕ НАЙДЕН]"):
+                current_name = f"[НЕ НАЙДЕН] {current_name}"
+
+            item = OfferItemModel(
+                offer_id=offer.id,
+                sku=sku or f"NOT_FOUND_{items.index(item_data)}",
+                name=current_name,
+                raw_name=raw_name,
+                price=price,
+                quantity=quantity,
+                unit=unit,
+                total=price * Decimal(str(quantity)),
+            )
+            self.db.add(item)
 
         # Пересчитываем итог
         await self.recalc_total(offer.id)

@@ -51,7 +51,7 @@ def parse_from_fuchs(self):
             mailbox = settings.EMAIL_USER or "testAI@tpgt-titan.com"
             client = OutlookClient(auth, mailbox=mailbox, folder_name=folder_name)
 
-            messages = await client.fetch_last_messages(limit=50)
+            messages = await client.fetch_unread_messages(limit=50)
 
             async with async_session() as session:
                 for msg in messages:
@@ -71,6 +71,9 @@ def parse_from_fuchs(self):
                     except IntegrityError:
                         await session.rollback()
                         continue
+
+                    # Помечаем как прочитанное сразу после успешной регистрации в БД
+                    await client.mark_as_read(message_id)
 
                     attachments = OutlookClient.parse_attachments(
                         msg.get("attachments")
@@ -183,7 +186,7 @@ def parse_from_requests(self):
             mailbox = settings.EMAIL_USER or "testAI@tpgt-titan.com"
             client = OutlookClient(auth, mailbox=mailbox, folder_name=folder_name)
 
-            messages = await client.fetch_last_messages(limit=50)
+            messages = await client.fetch_unread_messages(limit=50)
 
             async with async_session() as session:
                 for msg in messages:
@@ -203,6 +206,9 @@ def parse_from_requests(self):
                     except IntegrityError:
                         await session.rollback()
                         continue
+                    
+                    # Помечаем как прочитанное сразу после успешной регистрации в БД
+                    await client.mark_as_read(message_id)
 
                     attachments = OutlookClient.parse_attachments(
                         msg.get("attachments")
