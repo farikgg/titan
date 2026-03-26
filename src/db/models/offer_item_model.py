@@ -21,7 +21,7 @@ class OfferItemModel(Base):
     unit: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
     price: Mapped[Decimal] = mapped_column(Numeric(12, 2))
-    quantity: Mapped[float] = mapped_column(Numeric(12, 3), default=1.0)
+    quantity: Mapped[float | None] = mapped_column(Numeric(12, 3), nullable=True, default=1.0)
     total: Mapped[Decimal] = mapped_column(Numeric(12, 2))
 
     offer = relationship("OfferModel", back_populates="items")

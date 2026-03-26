@@ -11,6 +11,8 @@ services:
       - postgres
       - redis
     restart: unless-stopped
+    volumes:
+      - ./migrations:/app/migrations
 
   # ── Celery Worker ──
   worker:

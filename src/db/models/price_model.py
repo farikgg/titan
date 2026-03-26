@@ -29,7 +29,7 @@ class PriceModel(Base):
     raw_name: Mapped[str | None] = mapped_column(String(500), nullable=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     price: Mapped[Decimal] = mapped_column(Numeric(12, 2))
-    quantity: Mapped[float] = mapped_column(Numeric(12, 3), default=1.0)
+    quantity: Mapped[float | None] = mapped_column(Numeric(12, 3), nullable=True, default=1.0)
     unit: Mapped[str | None] = mapped_column(String(50), nullable=True)
     currency: Mapped[str] = mapped_column(String(3))
     source: Mapped[Source] = mapped_column(Enum(Source))
