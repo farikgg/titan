@@ -70,6 +70,12 @@ class PriceService:
             return await self.repo.update(db, existing, price_data)
 
         # Новая запись — тоже считаем unit_price
+        if getattr(price_data, "valid_from", None) and getattr(price_data, "first_seen_at", None) is None:
+            price_data = price_data.model_copy(update={"first_seen_at": price_data.valid_from})
+            
+        if getattr(price_data, "valid_days", None) is None:
+            price_data = price_data.model_copy(update={"valid_days": 90})
+
         price_data = self._enrich_unit_price(price_data)
         return await self.repo.create(db, price_data)
 

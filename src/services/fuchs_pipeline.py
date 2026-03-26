@@ -91,6 +91,8 @@ async def process_fuchs_message(msg_dict: dict) -> str:
                     "quantity": ri.get("quantity", 1.0),
                     "unit": ri.get("unit"),
                     "currency": ri.get("currency", "EUR"),
+                    "container_size": ri.get("container_size"),
+                    "container_unit": ri.get("container_unit"),
                     "source": "fuchs",
                     "source_type": "email"
                 }

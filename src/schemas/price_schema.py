@@ -25,7 +25,9 @@ class PriceBase(BaseModel):
     # Unit price (oils / lubricants)
     container_size: Optional[Decimal] = None
     container_unit: Optional[str] = None  # "L", "KG"
-
+    unit_price: Optional[Decimal] = None
+    unit_measure: Optional[str] = None  # "per_kg", "per_liter"
+    unit_price_missing: Optional[bool] = None
 
 class PriceCreate(PriceBase):
     pass
@@ -37,9 +39,5 @@ class PriceRead(PriceBase):
     valid_to: Optional[datetime] = None
     validity_status: Optional[str] = None
     days_left: Optional[int] = None
-    # Unit price (calculated)
-    unit_price: Optional[Decimal] = None
-    unit_measure: Optional[str] = None  # "per_kg", "per_liter"
-    unit_price_missing: Optional[bool] = None
-
+    # Unit price (calculated) is now inherited from PriceBase
     model_config = ConfigDict(from_attributes=True)

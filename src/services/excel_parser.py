@@ -13,11 +13,12 @@ _CONTAINER_COL_PATTERNS = (
     "pack size", "container", "volume", "net weight",
     "package", "filling", "gebinde", "inhalt",
     "drum", "pail", "can", "barrel",
+    "упаковка", "тара", "вес", "объем", "фасовка", "размер"
 )
 
-# Regex для извлечения числа + единицы из строки вида "200 L", "20kg", "180 KG drum"
+# Regex для извлечения числа + единицы из строки вида "200 L", "20kg", "180 KG drum", "20 л", "180 кг"
 _SIZE_UNIT_RE = re.compile(
-    r"(\d+(?:[.,]\d+)?)\s*(l|L|liter|litre|kg|KG|kilogram)\b",
+    r"(\d+(?:[.,]\d+)?)\s*(l|L|liter|litre|kg|KG|kilogram|л|кг|литр|литров)\b",
     re.IGNORECASE,
 )
 
@@ -40,7 +41,7 @@ def _parse_container_value(raw) -> tuple[Decimal | None, str | None]:
     if m:
         size = Decimal(m.group(1).replace(",", "."))
         unit_raw = m.group(2).upper().strip()
-        unit = "KG" if unit_raw.startswith("K") else "L"
+        unit = "KG" if unit_raw.startswith("K") or unit_raw.startswith("КГ") else "L"
         return size, unit
 
     # Если только число без единицы — берём число, единица null
