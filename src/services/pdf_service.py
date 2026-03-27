@@ -205,7 +205,8 @@ class PdfService:
         total_sum = 0.0
 
         for idx, item in enumerate(items, start=1):
-            qty = item.get("quantity", 0)
+            qty_raw = item.get("quantity", 0)
+            qty = float(qty_raw) if qty_raw is not None else 0.0
             price = float(item.get("price", 0) or 0)
             total = float(item.get("total", price * qty) or 0)
             total_sum += total
