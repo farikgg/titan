@@ -15,7 +15,7 @@ services:
   # ── Celery Worker ──
   worker:
     build: .
-    command: uv run celery -A src.worker.celery_app worker -Q default,heavy --loglevel=info --concurrency=1 --max-tasks-per-child=1
+    command: uv run celery -A src.worker.celery_app worker -Q default,heavy --loglevel=info --pool=solo
     env_file: .env
     depends_on:
       - postgres

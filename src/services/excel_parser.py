@@ -57,7 +57,13 @@ def _parse_container_value(raw) -> tuple[Decimal | None, str | None]:
 
 class FuchsExcelParser:
     def parse(self, content: bytes) -> list[PriceCreate]:
-        df = pd.read_excel(BytesIO(content))
+        try:
+            df = pd.read_excel(BytesIO(content))
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning("Ошибка чтения Excel файла (возможно неверный формат): %s", e)
+            return []
+            
         df = df.rename(str.lower, axis=1)
 
         # ищем колонку с ценой
