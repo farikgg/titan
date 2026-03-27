@@ -223,15 +223,22 @@ class FuchsAIParser:
 """.strip()
 
         try:
-            response = await self.client.aio.models.generate_content(
-                model=self.model,
-                contents=user_prompt,
-                config=types.GenerateContentConfig(
-                    system_instruction=SYSTEM_INSTRUCTION,
-                    temperature=0,
-                    response_mime_type="application/json",
-                ),
-            )
+            import asyncio
+
+            def _sync_api_call():
+                return self.client.models.generate_content(
+                    model=self.model,
+                    contents=user_prompt,
+                    config=types.GenerateContentConfig(
+                        system_instruction=SYSTEM_INSTRUCTION,
+                        temperature=0,
+                        response_mime_type="application/json",
+                    ),
+                )
+                
+            # Запускаем синхронный вызов в отдельном потоке. Это спасает
+            # от классических зависаний/дедлоков asyncio при работе внутри Celery (os.fork).
+            response = await asyncio.to_thread(_sync_api_call)
 
             raw_response = response.text
             logger.info("=== RAW GEMINI RESPONSE START ===")
