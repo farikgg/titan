@@ -109,9 +109,8 @@ class FuchsPriceReportService:
             df_expiring.to_excel(writer, index=False, sheet_name="expiring_soon")
             # Полная выгрузка
             df.to_excel(writer, index=False, sheet_name="all")
-            # Аналоги
-            if not df_analogs.empty:
-                df_analogs.to_excel(writer, index=False, sheet_name="analogs")
+            # Аналоги (всегда создаем лист, даже пустой, чтобы фронт и пользователи видели его наличие)
+            df_analogs.to_excel(writer, index=False, sheet_name="analogs")
 
         logger.info(
             "FUCHS price report generated: %s (expired=%d, expiring=%d, total=%d, analogs=%d)",

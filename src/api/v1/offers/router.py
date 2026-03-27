@@ -92,6 +92,38 @@ async def remove_item(
         raise HTTPException(status_code=400, detail=error_msg)
 
 
+class UpdateOfferItemRequest(BaseModel):
+    quantity: float
+    price: float
+    unit: str | None = None
+
+
+@router.put("/{offer_id}/items/{sku}")
+async def update_item(
+    offer_id: int,
+    sku: str,
+    body: UpdateOfferItemRequest,
+    db: AsyncSession = Depends(get_db),
+    user=Depends(get_tg_user_or_admin),
+):
+    """Обновляет количество, цену и единицу измерения (шт/кг) для товара в корзине."""
+    service = OfferService(db)
+    try:
+        await service.update_item(
+            offer_id=offer_id,
+            sku=sku,
+            quantity=body.quantity,
+            price=body.price,
+            unit=body.unit,
+        )
+        return {"status": "updated"}
+    except ValueError as e:
+        error_msg = str(e)
+        if "not found" in error_msg.lower():
+            raise HTTPException(status_code=404, detail=error_msg)
+        raise HTTPException(status_code=400, detail=error_msg)
+
+
 @router.get("/{offer_id}")
 async def get_offer(
     offer_id: int,

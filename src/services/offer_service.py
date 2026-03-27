@@ -156,6 +156,49 @@ class OfferService:
         await self.db.commit()
 
     # --------------------------------------------------
+    # Update item (Change quantity, price, unit)
+    # --------------------------------------------------
+
+    async def update_item(
+        self, offer_id: int, sku: str, quantity: float, price: float, unit: str | None = None
+    ):
+        """Обновляет количество, цену и единицу измерения (шт/кг) для выбранного товара."""
+        offer = await self.db.get(OfferModel, offer_id)
+        if not offer:
+            raise ValueError("Offer not found")
+
+        item = await self.db.scalar(
+            select(OfferItemModel).where(
+                OfferItemModel.offer_id == offer_id,
+                OfferItemModel.sku == sku,
+            )
+        )
+
+        if not item:
+            raise ValueError("Item not found in offer")
+
+        item.quantity = quantity
+        item.price = Decimal(str(price))
+        item.unit = unit
+        item.total = item.price * Decimal(str(quantity))
+
+        await self.recalc_total(offer_id)
+
+        await self._log(
+            actor_type="user",
+            action="update_item",
+            payload={
+                "offer_id": offer_id,
+                "sku": sku,
+                "quantity": quantity,
+                "price": price,
+                "unit": unit,
+            },
+        )
+
+        await self.db.commit()
+
+    # --------------------------------------------------
     # Create offer for deal (from email parser)
     # --------------------------------------------------
 

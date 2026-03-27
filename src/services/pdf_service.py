@@ -214,11 +214,13 @@ class PdfService:
             art = item.get("art") or ""
             full_name = f"{name} ({art})" if art else name
 
+            unit_display = item.get("unit") or "шт."
+
             row = [
                 str(idx),
                 full_name,
                 str(qty),
-                "шт.",
+                unit_display,
                 f"{price:,.2f}".replace(",", " "),
                 f"{total:,.2f}".replace(",", " "),
                 "",  # срок поставки — при необходимости можно добавить из item
