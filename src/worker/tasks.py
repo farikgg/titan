@@ -70,6 +70,7 @@ def parse_from_fuchs(self):
                             select(EmailProcessing).where(EmailProcessing.message_id == message_id)
                         )
                         if existing:
+                            logger.info(f"[parse_from_fuchs] Skipping existing message in DB: {message_id}")
                             continue
 
                         try:
@@ -89,6 +90,7 @@ def parse_from_fuchs(self):
                             msg.get("attachments")
                         )
 
+                        logger.info(f"[parse_from_fuchs] Sending ai_process definition for message: {message_id}")
                         ai_process.delay({
                             "message_ids": message_id,
                             "subject": msg.get("subject"),
@@ -199,6 +201,7 @@ def parse_from_requests(self):
             client = OutlookClient(auth, mailbox=mailbox, folder_name=folder_name)
 
             messages = await client.fetch_last_messages(limit=50)
+            logger.info(f"[parse_from_requests] Fetched {len(messages)} messages from Graph API.")
 
             async with async_session() as session:
                 for msg in messages:
@@ -209,6 +212,7 @@ def parse_from_requests(self):
                     msg_lock_key = f"email_processing:{message_id}"
                     msg_acquired = await lock_service.acquire_lock(msg_lock_key, 120)
                     if not msg_acquired:
+                        logger.warning(f"[parse_from_requests] Locked by Redis: {message_id}")
                         continue
 
                     try:
@@ -217,6 +221,7 @@ def parse_from_requests(self):
                             select(EmailProcessing).where(EmailProcessing.message_id == message_id)
                         )
                         if existing:
+                            logger.info(f"[parse_from_requests] Skipping existing message in DB: {message_id}")
                             continue
 
                         try:
@@ -242,6 +247,7 @@ def parse_from_requests(self):
                         # Получатели письма (кому пишет клиент - менеджеры)
                         to_recipients = msg.get("toRecipients", [])
 
+                        logger.info(f"[parse_from_requests] Sending requests_process definition for message: {message_id}")
                         requests_process.delay({
                             "message_ids": message_id,
                             "subject": msg.get("subject", ""),
