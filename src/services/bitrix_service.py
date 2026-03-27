@@ -17,6 +17,28 @@ class BitrixService:
         self.bx = bx
 
     @staticmethod
+    def _is_unauthorized(exc: Exception) -> bool:
+        """Проверяет, является ли ошибка 401 Unauthorized от Bitrix API."""
+        msg = str(exc).lower()
+        if "401" in msg and "unauthorized" in msg:
+            return True
+        # httpx.HTTPStatusError
+        resp = getattr(exc, "response", None)
+        if resp is not None:
+            status_code = getattr(resp, "status_code", None)
+            if status_code == 401:
+                return True
+        return False
+
+    def _log_unauthorized(self, method_name: str) -> None:
+        """Логирует critical-ошибку при 401 без traceback."""
+        logger.critical(
+            "BITRIX API ERROR: 401 Unauthorized в %s. "
+            "Проверьте актуальность BITRIX_WEBHOOK в .env!",
+            method_name,
+        )
+
+    @staticmethod
     def _im_not_supported_error(exc: Exception) -> bool:
         msg = str(exc).lower()
 
@@ -125,8 +147,11 @@ class BitrixService:
                 )
             
             return deals
-        except Exception:
-            logger.exception("Bitrix: ошибка получения списка сделок")
+        except Exception as e:
+            if self._is_unauthorized(e):
+                self._log_unauthorized("get_deals")
+            else:
+                logger.exception("Bitrix: ошибка получения списка сделок")
             return []
 
     async def get_deal(self, deal_id: int) -> Optional[Dict]:
@@ -232,8 +257,11 @@ class BitrixService:
                     error_info,
                 )
             return None
-        except Exception:
-            logger.exception("Bitrix: ошибка получения сделки %s", deal_id)
+        except Exception as e:
+            if self._is_unauthorized(e):
+                self._log_unauthorized("get_deal")
+            else:
+                logger.exception("Bitrix: ошибка получения сделки %s", deal_id)
             return None
 
     async def get_deal_products(self, deal_id: int) -> List[Dict]:
@@ -269,10 +297,13 @@ class BitrixService:
                     result,
                 )
                 return []
-        except Exception:
-            logger.exception(
-                "Bitrix: ошибка получения товаров сделки %s", deal_id
-            )
+        except Exception as e:
+            if self._is_unauthorized(e):
+                self._log_unauthorized("get_deal_products")
+            else:
+                logger.exception(
+                    "Bitrix: ошибка получения товаров сделки %s", deal_id
+                )
             return []
 
     async def get_all_deals(self, stage_id: str | None = None) -> List[Dict]:
@@ -343,8 +374,11 @@ class BitrixService:
                 )
             
             return deals
-        except Exception:
-            logger.exception("Bitrix: error fetching all deals")
+        except Exception as e:
+            if self._is_unauthorized(e):
+                self._log_unauthorized("get_all_deals")
+            else:
+                logger.exception("Bitrix: error fetching all deals")
             return []
 
     async def create_deal(self, fields: Dict) -> Optional[int]:
@@ -370,8 +404,11 @@ class BitrixService:
                 fields["STAGE_ID"],
             )
             return deal_id
-        except Exception:
-            logger.exception("Bitrix: ошибка создания сделки")
+        except Exception as e:
+            if self._is_unauthorized(e):
+                self._log_unauthorized("create_deal")
+            else:
+                logger.exception("Bitrix: ошибка создания сделки")
             return None
 
 
@@ -406,8 +443,11 @@ class BitrixService:
                     error_info,
                 )
             return False
-        except Exception:
-            logger.exception("Bitrix: ошибка обновления сделки %s", deal_id)
+        except Exception as e:
+            if self._is_unauthorized(e):
+                self._log_unauthorized("update_deal")
+            else:
+                logger.exception("Bitrix: ошибка обновления сделки %s", deal_id)
             return False
 
     async def update_deal_stage(self, deal_id: int, stage_id: str) -> bool:
@@ -487,10 +527,13 @@ class BitrixService:
                     error_info,
                 )
             return False
-        except Exception:
-            logger.exception(
-                "Bitrix: ошибка установки товаров для сделки %s", deal_id
-            )
+        except Exception as e:
+            if self._is_unauthorized(e):
+                self._log_unauthorized("set_deal_products")
+            else:
+                logger.exception(
+                    "Bitrix: ошибка установки товаров для сделки %s", deal_id
+                )
             return False
 
     # ──────────────────────────────────────────────
@@ -553,12 +596,15 @@ class BitrixService:
                     result,
                 )
                 return False
-        except Exception:
-            logger.exception(
-                "Bitrix: ошибка прикрепления КП %s к сделке %s",
-                pdf_path,
-                deal_id,
-            )
+        except Exception as e:
+            if self._is_unauthorized(e):
+                self._log_unauthorized("attach_kp_pdf")
+            else:
+                logger.exception(
+                    "Bitrix: ошибка прикрепления КП %s к сделке %s",
+                    pdf_path,
+                    deal_id,
+                )
             return False
 
     # ──────────────────────────────────────────────
@@ -594,8 +640,11 @@ class BitrixService:
             else:
                 logger.warning("Bitrix: компания %s не найдена или неверный формат ответа", company_id)
                 return None
-        except Exception:
-            logger.exception("Bitrix: ошибка получения компании %s", company_id)
+        except Exception as e:
+            if self._is_unauthorized(e):
+                self._log_unauthorized("get_company")
+            else:
+                logger.exception("Bitrix: ошибка получения компании %s", company_id)
             return None
 
     async def search_companies(self, query: str, limit: int = 20) -> List[Dict]:
@@ -632,8 +681,11 @@ class BitrixService:
             )
 
             return companies
-        except Exception:
-            logger.exception("Bitrix: ошибка поиска компаний по запросу '%s'", query)
+        except Exception as e:
+            if self._is_unauthorized(e):
+                self._log_unauthorized("search_companies")
+            else:
+                logger.exception("Bitrix: ошибка поиска компаний по запросу '%s'", query)
             return []
 
     async def search_users(self, name_query: str | None = None, email_query: str | None = None) -> List[Dict]:
@@ -664,12 +716,15 @@ class BitrixService:
                 name_query,
             )
             return users
-        except Exception:
-            logger.exception(
-                "Bitrix: ошибка поиска пользователей по запросу (email='%s', name='%s')",
-                email_query,
-                name_query,
-            )
+        except Exception as e:
+            if self._is_unauthorized(e):
+                self._log_unauthorized("search_users")
+            else:
+                logger.exception(
+                    "Bitrix: ошибка поиска пользователей по запросу (email='%s', name='%s')",
+                    email_query,
+                    name_query,
+                )
             return []
 
     # ──────────────────────────────────────────────
@@ -723,12 +778,15 @@ class BitrixService:
             )
 
             return contacts
-        except Exception:
-            logger.exception(
-                "Bitrix: ошибка поиска контактов по запросу '%s' (company_id=%s)",
-                query,
-                company_id,
-            )
+        except Exception as e:
+            if self._is_unauthorized(e):
+                self._log_unauthorized("search_contacts")
+            else:
+                logger.exception(
+                    "Bitrix: ошибка поиска контактов по запросу '%s' (company_id=%s)",
+                    query,
+                    company_id,
+                )
             return []
 
     # ──────────────────────────────────────────────
@@ -787,11 +845,14 @@ class BitrixService:
                     result,
                 )
                 return None
-        except Exception:
-            logger.exception(
-                "Bitrix: ошибка добавления комментария к сделке %s",
-                deal_id,
-            )
+        except Exception as e:
+            if self._is_unauthorized(e):
+                self._log_unauthorized("add_deal_comment")
+            else:
+                logger.exception(
+                    "Bitrix: ошибка добавления комментария к сделке %s",
+                    deal_id,
+                )
             return None
 
     async def get_deal_comments(self, deal_id: int, limit: int = 50) -> List[Dict]:
@@ -846,11 +907,14 @@ class BitrixService:
             )
             
             return comments
-        except Exception:
-            logger.exception(
-                "Bitrix: ошибка получения комментариев сделки %s",
-                deal_id,
-            )
+        except Exception as e:
+            if self._is_unauthorized(e):
+                self._log_unauthorized("get_deal_comments")
+            else:
+                logger.exception(
+                    "Bitrix: ошибка получения комментариев сделки %s",
+                    deal_id,
+                )
             # Возвращаем пустой список вместо None, чтобы фронт не падал
             return []
 

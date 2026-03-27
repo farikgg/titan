@@ -146,27 +146,64 @@ async def process_fuchs_message(msg_dict: dict) -> str:
 
     valid_items = [item for item in items if item.price is not None]
 
+    logger.info(
+        "Извлечено товаров: %d, из них с ценой (valid_items): %d",
+        len(items),
+        len(valid_items),
+    )
+
     if not valid_items:
         logger.info("AI returned items without prices, skipping save")
         return "No priced data"
 
+    for i, vi in enumerate(valid_items):
+        logger.info(
+            "  [%d] art=%s name=%s price=%s currency=%s container=%s %s",
+            i, vi.art, vi.name, vi.price, vi.currency,
+            vi.container_size, vi.container_unit,
+        )
+
     # -------- DB SAVE (atomic) --------
-    async with async_session() as session:
+    try:
+        async with async_session() as session:
 
-        exists = await repo.exists_by_message_id(session, message_id)
-        if exists:
-            return "Already processed"
+            exists = await repo.exists_by_message_id(session, message_id)
+            if exists:
+                logger.info("message_id=%s уже обработан, пропускаем", message_id)
+                return "Already processed"
 
-        for item in valid_items:
-            item.email_message_id = message_id
-            # valid_from: приоритет у даты из AI (start_date), fallback — дата получения письма
-            if not item.valid_from and received_at:
-                item.valid_from = received_at
-            if getattr(item, "valid_days", None) is None:
-                item.valid_days = 90
-            await price_service.update_or_create(session, item)
+            logger.info(
+                "Начинаю сохранение %d товаров в БД (message_id=%s)",
+                len(valid_items),
+                message_id,
+            )
 
-        await session.commit()
+            for item in valid_items:
+                item.email_message_id = message_id
+                # valid_from: приоритет у даты из AI (start_date), fallback — дата получения письма
+                if not item.valid_from and received_at:
+                    item.valid_from = received_at
+                if getattr(item, "valid_days", None) is None:
+                    item.valid_days = 90
+                logger.info(
+                    "  update_or_create: art=%s price=%s valid_from=%s valid_days=%s",
+                    item.art, item.price, item.valid_from, item.valid_days,
+                )
+                await price_service.update_or_create(session, item)
+
+            await session.commit()
+            logger.info(
+                "session.commit() выполнен успешно, сохранено %d товаров (message_id=%s)",
+                len(valid_items),
+                message_id,
+            )
+    except Exception as e:
+        logger.error(
+            "DB Save Error при сохранении прайсов (message_id=%s): %s",
+            message_id,
+            e,
+            exc_info=True,
+        )
 
     # -------- СОЗДАНИЕ СДЕЛКИ В BITRIX24 (воронка Гидротех) --------
     # deal_id = None
