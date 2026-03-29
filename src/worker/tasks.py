@@ -570,6 +570,11 @@ async def _generate_offer_pdf(offer_id: int, chat_id: int | None):
                     "payment_terms": getattr(offer, "payment_terms", None),
                     "delivery_terms": getattr(offer, "delivery_terms", None),
                     "warranty_terms": getattr(offer, "warranty_terms", None),
+                    "lead_time": getattr(offer, "lead_time", None),
+                    # Поля для шапки
+                    "client_company_name": getattr(offer, "client_company_name", None),
+                    "client_address": getattr(offer, "client_address", None),
+                    "subject": getattr(offer, "subject", None),
                     # Информация о менеджере пока не выводится, но оставлена для совместимости
                     "manager_name": manager_name,
                     "manager_phone": manager_phone,
@@ -579,6 +584,7 @@ async def _generate_offer_pdf(offer_id: int, chat_id: int | None):
                             "name": i.name,
                             "price": float(i.price),
                             "quantity": i.quantity,
+                            "unit": i.unit,
                             "total": float(i.total),
                         }
                         for i in items
