@@ -422,6 +422,8 @@ class OfferService:
         fuchs_margin_pct: float | None = None,
         fuchs_vat_enabled: bool | None = None,
         fuchs_vat_pct: float | None = None,
+        skf_delivery_pct: float | None = None,
+        skf_duty_pct: float | None = None,
         skf_margin_pct: float | None = None,
         skf_vat_enabled: bool | None = None,
         skf_vat_pct: float | None = None,
