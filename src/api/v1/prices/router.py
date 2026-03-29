@@ -247,16 +247,36 @@ async def request_analog_email(
     subject = f"Запрос аналога: {price_obj.name} (art: {price_obj.art})"
     
     body = f"""
-    <h2>Запрос на поиск аналога</h2>
-    <p>Менеджер просит найти аналог для следующего товара:</p>
-    <ul>
-        <li><b>Название:</b> {price_obj.name}</li>
-        <li><b>Артикул:</b> {price_obj.art}</li>
-        <li><b>Текущая цена:</b> {price_obj.price} {price_obj.currency}</li>
-        <li><b>Тара:</b> {price_obj.container_size} {price_obj.container_unit}</li>
-    </ul>
-    <br/>
-    <p><i>Titan Automation System</i></p>
+    <div style="font-family: Arial, sans-serif; max-width: 600px; border: 1px solid #eee; padding: 20px;">
+        <h2 style="color: #004a99; border-bottom: 2px solid #004a99; padding-bottom: 10px;">Запрос на поиск аналога</h2>
+        <p>Приветствую, <b>Евгений</b>!</p>
+        <p>Для подготовки коммерческого предложения менеджеру требуется подобрать аналог для следующей позиции:</p>
+        
+        <table style="width: 100%; border-collapse: collapse; margin-top: 20px;">
+            <tr style="background-color: #f9f9f9;">
+                <td style="padding: 10px; border: 1px solid #ddd;"><b>Товар:</b></td>
+                <td style="padding: 10px; border: 1px solid #ddd;">{price_obj.name}</td>
+            </tr>
+            <tr>
+                <td style="padding: 10px; border: 1px solid #ddd;"><b>Артикул:</b></td>
+                <td style="padding: 10px; border: 1px solid #ddd;"><code>{price_obj.art}</code></td>
+            </tr>
+            <tr style="background-color: #f9f9f9;">
+                <td style="padding: 10px; border: 1px solid #ddd;"><b>Поставщик:</b></td>
+                <td style="padding: 10px; border: 1px solid #ddd;">{price_obj.supplier or "Не указан"}</td>
+            </tr>
+            <tr>
+                <td style="padding: 10px; border: 1px solid #ddd;"><b>Тара:</b></td>
+                <td style="padding: 10px; border: 1px solid #ddd;">{price_obj.container_size or "---"} {price_obj.container_unit or ""}</td>
+            </tr>
+        </table>
+        
+        <p style="margin-top: 25px; font-size: 0.9em; color: #666;">
+            Пожалуйста, проверьте наличие альтернатив и сообщите ответному менеджеру.
+        </p>
+        <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;"/>
+        <p style="font-size: 0.8em; color: #999;"><i>Отправлено автоматически из Titan Automation System</i></p>
+    </div>
     """
 
     await client.send_email(to_email=to_email, subject=subject, body=body)

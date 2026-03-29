@@ -267,6 +267,11 @@ class UpdateOfferTermsRequest(BaseModel):
     skf_vat_enabled: bool | None = None
     skf_vat_pct: float | None = None
 
+    # Поля для шапки PDF
+    client_company_name: str | None = None
+    client_address: str | None = None
+    subject: str | None = None
+
 
 @router.post("/{offer_id}/convert")
 async def convert(
@@ -337,6 +342,9 @@ async def update_terms(
             skf_margin_pct=body.skf_margin_pct,
             skf_vat_enabled=body.skf_vat_enabled,
             skf_vat_pct=body.skf_vat_pct,
+            client_company_name=body.client_company_name,
+            client_address=body.client_address,
+            subject=body.subject,
         )
         return {"status": "updated"}
     except ValueError as e:

@@ -422,11 +422,12 @@ class OfferService:
         fuchs_margin_pct: float | None = None,
         fuchs_vat_enabled: bool | None = None,
         fuchs_vat_pct: float | None = None,
-        skf_delivery_pct: float | None = None,
-        skf_duty_pct: float | None = None,
         skf_margin_pct: float | None = None,
         skf_vat_enabled: bool | None = None,
         skf_vat_pct: float | None = None,
+        client_company_name: str | None = None,
+        client_address: str | None = None,
+        subject: str | None = None,
     ):
         """
         Обновляет текстовые поля условий для КП.
@@ -452,6 +453,15 @@ class OfferService:
             changed = True
         if currency is not None:
             offer.currency = currency
+            changed = True
+        if client_company_name is not None:
+            offer.client_company_name = client_company_name
+            changed = True
+        if client_address is not None:
+            offer.client_address = client_address
+            changed = True
+        if subject is not None:
+            offer.subject = subject
             changed = True
 
         # --------------------------------------------------

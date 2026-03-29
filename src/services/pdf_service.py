@@ -155,11 +155,32 @@ class PdfService:
         month_name = month_names.get(now.month, "")
         date_str = f"от {now.day:02d} {month_name} {now.year} г."
         title = f"КОММЕРЧЕСКОЕ ПРЕДЛОЖЕНИЕ №{deal['id']} {date_str}"
-        c.setFont("Arial", 12)
+        c.setFont("Arial", 11)
         c.drawString(left_x, y, title)
+        y -= 5 * mm
 
-        c.drawString(left_x, y - 5 * mm, f"ТОО «ТПГ «Титан», г.Астана")
-        c.drawString(left_x, y - 10 * mm, f"{deal.get('client_company_name')}")
+        # 2. ТОО Титан (Константа)
+        c.drawString(left_x, y, "ТОО «ТПГ «Титан», г.Астана")
+        y -= 5 * mm
+
+        # 3. Данные клиента
+        client_name = deal.get("client_company_name")
+        if not client_name or str(client_name).lower() == "none":
+            client_name = "Заказчик"
+        
+        client_addr = deal.get("client_address")
+        if not client_addr or str(client_addr).lower() == "none":
+            client_addr = ""
+            
+        full_client_line = f"{client_name}, {client_addr}" if client_addr else client_name
+        c.drawString(left_x, y, full_client_line)
+        y -= 5 * mm
+
+        # 4. Тема (на какой товар)
+        subject_text = deal.get("subject")
+        if not subject_text or str(subject_text).lower() == "none":
+            subject_text = "на поставку продукции"
+        c.drawString(left_x, y, f"на {subject_text}")
 
         # Раньше здесь выводили строку вида "на RENOLIT CX-EP 2" (название первого товара).
         # По новым требованиям не указываем конкретного клиента/товар в заголовке,
@@ -214,6 +235,9 @@ class PdfService:
             total_sum += total
 
             name = item.get("name") or ""
+            # Очищаем название от метки [НЕ НАЙДЕН] для PDF
+            name = name.replace("[НЕ НАЙДЕН] ", "").strip()
+            
             art = item.get("art") or ""
             full_name = f"{name} ({art})" if art else name
 
@@ -283,7 +307,14 @@ class PdfService:
         # ----------------------------------------
         y_formula = table_y - 8 * mm
         c.setFont("Arial", 8)
-        c.drawString(left_x, y_formula, "* Расчет: Цена за ед. * Кол-во = Сумма. Цены указаны за выбранную ед. изм. (кг/л/шт).")
+        
+        # Более подробное пояснение формулы как просил пользователь
+        vat_text = "с учетом НДС 12%" if vat_enabled else "без учета НДС"
+        formula_note = f"* Расчет: (Цена за ед. × Кол-во) = Сумма. Цены указаны {vat_text} за выбранную ед. изм. (кг/л/шт)."
+        c.drawString(left_x, y_formula, formula_note)
+        
+        y_formula -= 4 * mm
+        c.drawString(left_x, y_formula, "* В стоимость включены: таможенная пошлина, стоимость доставки до склада Покупателя.")
 
         # ----------------------------------------
         # Условия (ниже таблицы)
