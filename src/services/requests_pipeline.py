@@ -503,6 +503,10 @@ async def process_requests_message(msg_dict: dict) -> str:
                 deadline=extraction_result.get("deadline"),
                 delivery_place=extraction_result.get("delivery_place"),
                 notes=", ".join(extraction_result.get("dates", [])) if extraction_result.get("dates") else extraction_result.get("notes"),
+                # Новые поля для шапки PDF
+                client_company_name=company_name,
+                client_address=extraction_result.get("delivery_place"),
+                subject=extraction_result.get("subject"),
             )
             logger.info(
                 "Создана корзина offer_id=%s для сделки deal_id=%s, товаров: %d",

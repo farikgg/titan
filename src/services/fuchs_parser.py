@@ -92,6 +92,7 @@ SYSTEM_INSTRUCTION = """
       "end_date": "YYYY-MM-DD | null"
     }
   ],
+  "subject": "Краткая тема КП (например: на поставку масла RENOLIT)",
   "incoterms": "string | null",
   "deadline": "string | null",
   "delivery_place": "string | null",

@@ -61,3 +61,8 @@ class OfferModel(Base):
 
     # Общий срок поставки для всех товаров в КП
     lead_time: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    # Данные для профессиональной шапки PDF
+    client_company_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    client_address: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    subject: Mapped[str | None] = mapped_column(String(500), nullable=True)

@@ -220,6 +220,9 @@ class OfferService:
         deadline: str | None = None,
         delivery_place: str | None = None,
         notes: str | None = None,
+        client_company_name: str | None = None,
+        client_address: str | None = None,
+        subject: str | None = None,
     ) -> OfferModel:
         """
         Создаёт корзину (Offer) для сделки из парсера писем.
@@ -472,10 +475,15 @@ class OfferService:
                 vat_enabled = bool(fuchs_vat_enabled) if fuchs_vat_enabled is not None else True
                 vat_pct_val = fuchs_vat_pct if fuchs_vat_pct is not None else vat_default
                 duty_pct_val = 5.0  # фикс
+            if supplier_type == "fuchs":
+                # FUCHS: (Purchase + 0.70) * 1.05 * (1 + Margin)
                 delivery_per_kg = 0.70
+                duty_pct_val = 5.0
+                vat_pct_val = fuchs_vat_pct if fuchs_vat_pct is not None else 16.0
+                vat_enabled = fuchs_vat_enabled if fuchs_vat_enabled is not None else True
+                margin = fuchs_margin_pct if fuchs_margin_pct is not None else 50.0
 
                 for item in items:
-                    # Ищем цену FUCHS по артикулу
                     price_obj = await self.db.scalar(
                         select(PriceModel).where(
                             PriceModel.art == item.sku,
@@ -486,12 +494,10 @@ class OfferService:
                         continue
 
                     purchase_price = float(price_obj.price)
-
-                    base = purchase_price + delivery_per_kg
-                    with_duty = base * (1 + duty_pct_val / 100.0)
+                    base_with_delivery = purchase_price + delivery_per_kg
+                    with_duty = base_with_delivery * (1 + duty_pct_val / 100.0)
                     price_without_vat = with_duty * (1 + margin / 100.0)
 
-                    # Клиентская цена: с НДС, если он включён, иначе без НДС.
                     if vat_enabled:
                         price_for_client = price_without_vat * (1 + vat_pct_val / 100.0)
                     else:
@@ -501,16 +507,16 @@ class OfferService:
                     item.total = item.price * item.quantity
 
                 await self.recalc_total(offer_id)
-                # Сохраняем флаг НДС на уровне оффера для использования при генерации PDF.
                 offer.vat_enabled = vat_enabled
                 changed = True
 
-            elif supplier == "skf":
+            elif supplier_type == "skf":
+                # SKF: (Purchase * 1.1 * 1.05) + (Purchase * 0.5)
                 delivery_pct_val = skf_delivery_pct if skf_delivery_pct is not None else 10.0
                 duty_pct_val = skf_duty_pct if skf_duty_pct is not None else 5.0
+                vat_pct_val = skf_vat_pct if skf_vat_pct is not None else 16.0
+                vat_enabled = skf_vat_enabled if skf_vat_enabled is not None else True
                 margin = skf_margin_pct if skf_margin_pct is not None else 50.0
-                vat_enabled = bool(skf_vat_enabled) if skf_vat_enabled is not None else True
-                vat_pct_val = skf_vat_pct if skf_vat_pct is not None else vat_default
 
                 for item in items:
                     price_obj = await self.db.scalar(
@@ -523,12 +529,12 @@ class OfferService:
                         continue
 
                     purchase_price = float(price_obj.price)
+                    landed_base = purchase_price * (1 + delivery_pct_val / 100.0)
+                    with_duty = landed_base * (1 + duty_pct_val / 100.0)
+                    # Маржа от ЗАКУПА
+                    margin_amount = purchase_price * (margin / 100.0)
+                    price_without_vat = with_duty + margin_amount
 
-                    base = purchase_price * (1 + delivery_pct_val / 100.0)
-                    with_duty = base * (1 + duty_pct_val / 100.0)
-                    price_without_vat = with_duty * (1 + margin / 100.0)
-
-                    # Клиентская цена: с НДС, если он включён, иначе без НДС.
                     if vat_enabled:
                         price_for_client = price_without_vat * (1 + vat_pct_val / 100.0)
                     else:
@@ -538,7 +544,6 @@ class OfferService:
                     item.total = item.price * item.quantity
 
                 await self.recalc_total(offer_id)
-                # Сохраняем флаг НДС на уровне оффера для использования при генерации PDF.
                 offer.vat_enabled = vat_enabled
                 changed = True
 
