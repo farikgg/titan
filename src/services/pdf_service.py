@@ -177,10 +177,17 @@ class PdfService:
         y -= 5 * mm
 
         # 4. Тема (на какой товар)
-        subject_text = deal.get("subject")
-        if not subject_text or str(subject_text).lower() == "none":
+        subject_data = deal.get("subject")
+        if not subject_data or str(subject_data).lower() == "none":
             subject_text = "на поставку продукции"
-        c.drawString(left_x, y, f"на {subject_text}")
+        else:
+            # Если тема уже начинается на "на ", не дублируем
+            if str(subject_data).lower().startswith("на "):
+                subject_text = subject_data
+            else:
+                subject_text = f"на {subject_data}"
+        
+        c.drawString(left_x, y, subject_text)
 
         # Раньше здесь выводили строку вида "на RENOLIT CX-EP 2" (название первого товара).
         # По новым требованиям не указываем конкретного клиента/товар в заголовке,
@@ -241,13 +248,24 @@ class PdfService:
             art = item.get("art") or ""
             full_name = f"{name} ({art})" if art else name
 
-            unit_display = item.get("unit") or "шт."
+            # Перевод ед. изм. (напр. piece -> шт.)
+            unit_raw = (item.get("unit") or "шт.").lower()
+            unit_map = {
+                "piece": "шт.",
+                "pcs": "шт.",
+                "pc": "шт.",
+                "unit": "шт.",
+                "kg": "кг",
+                "l": "л",
+                "liter": "л",
+            }
+            unit_display = unit_map.get(unit_raw, unit_raw)
 
             row = [
                 str(idx),
                 full_name,
                 str(qty),
-                 unit_display,
+                unit_display,
                 f"{price:,.2f}".replace(",", " "),
                 f"{total:,.2f}".replace(",", " "),
                 str(deal.get("lead_time") or ""),  # Срок поставки из оффера
