@@ -18,6 +18,7 @@ from src.services.deal_service import DealService
 from src.services.bitrix_service import BitrixService
 from src.services.offer_service import OfferService
 from src.services.price_service import PriceService
+from src.repositories.analog_repo import AnalogRepository
 from src.core.bitrix import get_bitrix_client
 from src.db.initialize import async_session
 from src.app.config import settings
@@ -223,8 +224,10 @@ async def find_items_in_prices(
 ) -> list[dict]:
     """
     Ищет товары из письма в прайсах (prices таблица).
+    Если не найден - ищет аналоги в таблице product_analogs.
     """
     result_items = []
+    analog_repo = AnalogRepository()
 
     for item in parsed_items:
         art = item.get("art") or item.get("sku", "")
@@ -233,24 +236,12 @@ async def find_items_in_prices(
         quantity = float(item.get("quantity", 1))
         unit = item.get("unit")
 
-        if not art:
-            result_items.append({
-                "art": "",
-                "sku": "",
-                "name": name or "Товар без артикула",
-                "raw_name": raw_name,
-                "price": float(item.get("price", 0)),
-                "quantity": quantity,
-                "unit": unit,
-                "currency": item.get("currency", "KZT"),
-                "found": False,
-            })
-            continue
-
         # Ищем в прайсах
-        price_obj = await db_session.scalar(
-            select(PriceModel).where(PriceModel.art == art)
-        )
+        price_obj = None
+        if art:
+            price_obj = await db_session.scalar(
+                select(PriceModel).where(PriceModel.art == art)
+            )
 
         if price_obj:
             result_items.append({
@@ -263,18 +254,32 @@ async def find_items_in_prices(
                 "unit": unit or getattr(price_obj, "unit", None),
                 "currency": price_obj.currency or "KZT",
                 "found": True,
+                "analogs": [],
             })
         else:
+            # ТОВАР НЕ НАЙДЕН -> Ищем аналоги
+            analogs = []
+            if art:
+                # Нормализуем артикул для поиска аналогов
+                analogs_objs = await analog_repo.get_by_source_art(db_session, art.strip().upper())
+                for a in analogs_objs:
+                    analogs.append({
+                        "art": a.analog_art,
+                        "name": a.analog_name,
+                        "source": a.analog_source,
+                    })
+
             result_items.append({
                 "art": art,
                 "sku": art,
-                "name": name or f"Товар {art}",
+                "name": name or (f"Товар {art}" if art else "Товар без артикула"),
                 "raw_name": raw_name,
                 "price": float(item.get("price", 0)),
                 "quantity": quantity,
                 "unit": unit,
                 "currency": item.get("currency", "KZT"),
                 "found": False,
+                "analogs": analogs,
             })
 
     return result_items
@@ -562,8 +567,29 @@ async def process_requests_message(msg_dict: dict) -> str:
         f"\n📦 Товаров спарсено: {len(items_with_status)}\n"
         f"✅ Найдено в прайсах: {found_count}\n"
         f"❌ Не найдено: {not_found_count}\n"
-        f"\n{deal_text}"
     )
+
+    # Детальная информация по отсутствующим товарам
+    if not_found_count > 0:
+        text += "\n⚠️ ОТСУТСТВУЮЩИЕ ПОЗИЦИИ:\n"
+        for item in items_with_status:
+            if not item.get("found"):
+                item_name = item.get("name") or item.get("art") or "???"
+                text += f"• {item_name}"
+                if item.get("art"):
+                    text += f" (арт. {item.get('art')})"
+                text += "\n"
+                
+                # Показываем аналоги, если есть
+                analogs = item.get("analogs", [])
+                if analogs:
+                    text += "   🔍 Есть аналоги в базе:\n"
+                    for a in analogs:
+                        text += f"   - {a['name']} ({a['art']}) [{a['source']}]\n"
+                else:
+                    text += "   ❌ Аналогов не найдено. Рекомендуется запросить поиск аналога у поставщика.\n"
+
+    text += f"\n{deal_text}"
 
     # Шлём уведомление всем админам
     for chat_id in get_admin_chat_ids():
