@@ -4,3 +4,4 @@
 .idea/
 __pycache__
 *.env_deploy
+CLAUDE.md
