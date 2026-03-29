@@ -221,10 +221,10 @@ class PdfService:
                 str(idx),
                 full_name,
                 str(qty),
-                unit_display,
+                 unit_display,
                 f"{price:,.2f}".replace(",", " "),
                 f"{total:,.2f}".replace(",", " "),
-                "",  # срок поставки — при необходимости можно добавить из item
+                str(deal.get("lead_time") or ""),  # Срок поставки из оффера
             ]
             table_data.append(row)
 
@@ -277,9 +277,16 @@ class PdfService:
         table.drawOn(c, left_x, table_y)
 
         # ----------------------------------------
+        # Пояснение по расчету (под таблицей)
+        # ----------------------------------------
+        y_formula = table_y - 8 * mm
+        c.setFont("Arial", 8)
+        c.drawString(left_x, y_formula, "* Расчет: Цена за ед. * Кол-во = Сумма. Цены указаны за выбранную ед. изм. (кг/л/шт).")
+
+        # ----------------------------------------
         # Условия (ниже таблицы)
         # ----------------------------------------
-        footer_y = table_y - 15 * mm
+        footer_y = y_formula - 12 * mm
         c.setFont("Arial", 9)
 
         # Динамические условия с дефолтами.

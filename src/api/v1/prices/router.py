@@ -13,6 +13,9 @@ from src.services.price_service import PriceService
 from src.core.rbac import require_permission
 from src.repositories.analog_repo import AnalogRepository
 from src.services.fuchs_price_report_service import FuchsPriceReportService
+from src.integrations.azure.outlook_client import OutlookClient
+from src.core.graph_auth import GraphAuth
+from src.app.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -218,3 +221,44 @@ async def recalculate_unit_prices(
         "updated": updated,
         "flagged_missing": flagged,
     }
+
+
+@router.post(
+    "/{art}/request-analog",
+    dependencies=[Depends(require_permission("prices.write"))],
+    summary="Отправить запрос на поиск аналога (Email)",
+)
+async def request_analog_email(
+    art: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Находит товар по артикулу и отправляет Email-запрос на поиск аналога.
+    """
+    price_obj = await price_service.get_price(db, art)
+    if not price_obj:
+        raise HTTPException(status_code=404, detail=f"Product with art {art} not found")
+
+    auth = GraphAuth()
+    client = OutlookClient(auth)
+
+    # Адрес получателя (Евгения)
+    to_email = "e.skobelev@tpgt-titan.kz" # Указан в контексте
+    subject = f"Запрос аналога: {price_obj.name} (art: {price_obj.art})"
+    
+    body = f"""
+    <h2>Запрос на поиск аналога</h2>
+    <p>Менеджер просит найти аналог для следующего товара:</p>
+    <ul>
+        <li><b>Название:</b> {price_obj.name}</li>
+        <li><b>Артикул:</b> {price_obj.art}</li>
+        <li><b>Текущая цена:</b> {price_obj.price} {price_obj.currency}</li>
+        <li><b>Тара:</b> {price_obj.container_size} {price_obj.container_unit}</li>
+    </ul>
+    <br/>
+    <p><i>Titan Automation System</i></p>
+    """
+
+    await client.send_email(to_email=to_email, subject=subject, body=body)
+    
+    return {"status": "request_sent", "to": to_email}

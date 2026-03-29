@@ -58,3 +58,6 @@ class OfferModel(Base):
     # Флаг, включает ли итоговая цена НДС.
     # Используется, в частности, для отображения/скрытия подписи «(без НДС)» в PDF.
     vat_enabled = Column(Boolean, nullable=True)
+
+    # Общий срок поставки для всех товаров в КП
+    lead_time: Mapped[str | None] = mapped_column(String(255), nullable=True)

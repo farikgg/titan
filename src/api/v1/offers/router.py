@@ -242,6 +242,7 @@ class UpdateOfferTermsRequest(BaseModel):
     payment_terms: str | None = None
     delivery_terms: str | None = None
     warranty_terms: str | None = None
+    lead_time: str | None = None
 
     # Валюта КП (KZT / RUB / EUR / USD и т.п.)
     currency: str | None = None

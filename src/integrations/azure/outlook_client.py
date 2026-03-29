@@ -87,3 +87,33 @@ class OutlookClient:
             })
 
         return parsed
+
+    async def send_email(self, to_email: str, subject: str, body: str):
+        """
+        Отправляет письмо через Microsoft Graph API.
+        """
+        mailbox = self.mailbox or "testAI@tpgt-titan.com"
+        url = f"{GRAPH_BASE}/users/{mailbox}/sendMail"
+
+        payload = {
+            "message": {
+                "subject": subject,
+                "body": {
+                    "contentType": "HTML",
+                    "content": body,
+                },
+                "toRecipients": [
+                    {
+                        "emailAddress": {
+                            "address": to_email,
+                        }
+                    }
+                ],
+            },
+            "saveToSentItems": "true",
+        }
+
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.post(url, headers=await self._headers(), json=payload)
+            resp.raise_for_status()
+            return True

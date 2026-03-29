@@ -99,6 +99,7 @@ class OfferService:
                 name=price_obj.name,
                 price=price_obj.price,
                 quantity=quantity,
+                unit=price_obj.container_unit,  # Автоматическая подстановка ед. изм.
                 total=price_obj.price * quantity,
             )
             self.db.add(item)
@@ -412,6 +413,7 @@ class OfferService:
         payment_terms: str | None = None,
         delivery_terms: str | None = None,
         warranty_terms: str | None = None,
+        lead_time: str | None = None,
         currency: str | None = None,
         supplier_type: str | None = None,
         fuchs_margin_pct: float | None = None,
@@ -441,6 +443,9 @@ class OfferService:
             changed = True
         if warranty_terms is not None:
             offer.warranty_terms = warranty_terms
+            changed = True
+        if lead_time is not None:
+            offer.lead_time = lead_time
             changed = True
         if currency is not None:
             offer.currency = currency
@@ -546,6 +551,7 @@ class OfferService:
                     "payment_terms": payment_terms,
                     "delivery_terms": delivery_terms,
                     "warranty_terms": warranty_terms,
+                    "lead_time": lead_time,
                     "supplier_type": supplier_type,
                 },
             )
@@ -708,6 +714,7 @@ class OfferService:
             "payment_terms": getattr(offer, "payment_terms", None),
             "delivery_terms": getattr(offer, "delivery_terms", None),
             "warranty_terms": getattr(offer, "warranty_terms", None),
+            "lead_time": getattr(offer, "lead_time", None),
             "vat_enabled": getattr(offer, "vat_enabled", None),
             "items": [
                 {
@@ -743,6 +750,7 @@ class OfferService:
             "payment_terms": getattr(offer, "payment_terms", None),
             "delivery_terms": getattr(offer, "delivery_terms", None),
             "warranty_terms": getattr(offer, "warranty_terms", None),
+            "lead_time": getattr(offer, "lead_time", None),
             "vat_enabled": getattr(offer, "vat_enabled", None),
             "items": [
                 {
