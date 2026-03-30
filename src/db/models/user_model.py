@@ -4,7 +4,7 @@ from src.db.initialize import Base
 from src.core.enums import Role
 
 from sqlalchemy.orm import Mapped, mapped_column
-from sqlalchemy import String, CheckConstraint
+from sqlalchemy import String, CheckConstraint, BigInteger
 
 
 class UserModel(Base):
@@ -12,8 +12,8 @@ class UserModel(Base):
 
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    tg_id: Mapped[int] = mapped_column(unique=True, nullable=False)
-    bitrix_user_id: Mapped[int] = mapped_column(nullable=False)
+    tg_id: Mapped[int] = mapped_column(BigInteger, unique=True, nullable=False)
+    bitrix_user_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     username: Mapped[str] = mapped_column(nullable=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=True)
 
