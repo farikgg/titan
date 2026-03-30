@@ -6,3 +6,4 @@ from .offer_item_model import *
 from .user_model import *
 from .webhook_log import *
 from .product_analog_model import *
+from .analog_request_model import *
