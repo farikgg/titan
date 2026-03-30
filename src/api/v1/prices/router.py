@@ -262,8 +262,8 @@ async def request_analog_email(
                 <td style="padding: 10px; border: 1px solid #ddd;"><code>{price_obj.art}</code></td>
             </tr>
             <tr style="background-color: #f9f9f9;">
-                <td style="padding: 10px; border: 1px solid #ddd;"><b>Поставщик:</b></td>
-                <td style="padding: 10px; border: 1px solid #ddd;">{price_obj.supplier or "Не указан"}</td>
+                <td style="padding: 10px; border: 1px solid #ddd;"><b>Бренд / Источник:</b></td>
+                <td style="padding: 10px; border: 1px solid #ddd;">{price_obj.source.value if price_obj.source else "Не указан"}</td>
             </tr>
             <tr>
                 <td style="padding: 10px; border: 1px solid #ddd;"><b>Тара:</b></td>
