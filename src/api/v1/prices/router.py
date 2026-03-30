@@ -226,7 +226,7 @@ async def recalculate_unit_prices(
 @router.post(
     "/{art}/request-analog",
     dependencies=[Depends(require_permission("prices.write"))],
-    summary="Отправить запрос на поиск аналога (Email) по артикулу из каталога",
+    summary="Отправить запрос на поиск аналога (Email)",
 )
 async def request_analog_email(
     art: str,
@@ -242,15 +242,15 @@ async def request_analog_email(
     auth = GraphAuth()
     client = OutlookClient(auth)
 
-    # Адрес получателя (Евгения)
-    to_email = "e.skobelev@tpgt-titan.kz"
+    # Адрес получателя (из настроек)
+    to_email = settings.ANALOG_REQUEST_RECIPIENT
     subject = f"Запрос аналога: {price_obj.name} (art: {price_obj.art})"
     
     body = f"""
     <div style="font-family: Arial, sans-serif; max-width: 600px; border: 1px solid #eee; padding: 20px;">
         <h2 style="color: #004a99; border-bottom: 2px solid #004a99; padding-bottom: 10px;">Запрос на поиск аналога</h2>
         <p>Приветствую, <b>Евгений</b>!</p>
-        <p>Для подготовки коммерческого предложения менеджеру требуется подобрать аналог для следующей позиции из каталога:</p>
+        <p>Для подготовки коммерческого предложения менеджеру требуется подобрать аналог для следующей позиции:</p>
         
         <table style="width: 100%; border-collapse: collapse; margin-top: 20px;">
             <tr style="background-color: #f9f9f9;">
@@ -262,8 +262,12 @@ async def request_analog_email(
                 <td style="padding: 10px; border: 1px solid #ddd;"><code>{price_obj.art}</code></td>
             </tr>
             <tr style="background-color: #f9f9f9;">
-                <td style="padding: 10px; border: 1px solid #ddd;"><b>Бренд:</b></td>
-                <td style="padding: 10px; border: 1px solid #ddd;">{price_obj.source or "Не указан"}</td>
+                <td style="padding: 10px; border: 1px solid #ddd;"><b>Поставщик:</b></td>
+                <td style="padding: 10px; border: 1px solid #ddd;">{price_obj.supplier or "Не указан"}</td>
+            </tr>
+            <tr>
+                <td style="padding: 10px; border: 1px solid #ddd;"><b>Тара:</b></td>
+                <td style="padding: 10px; border: 1px solid #ddd;">{price_obj.container_size or "---"} {price_obj.container_unit or ""}</td>
             </tr>
         </table>
         
@@ -306,7 +310,7 @@ async def send_analog_request_email(
     auth = GraphAuth()
     client = OutlookClient(auth)
 
-    to_email = "e.skobelev@tpgt-titan.kz"
+    to_email = settings.ANALOG_REQUEST_RECIPIENT
     product_display = request_obj.product_name or request_obj.product_code or f"ID:{request_id}"
     subject = f"СРОЧНЫЙ ЗАПРОС АНАЛОГА: {product_display}"
     
