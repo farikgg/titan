@@ -226,7 +226,7 @@ async def recalculate_unit_prices(
 @router.post(
     "/{art}/request-analog",
     dependencies=[Depends(require_permission("prices.write"))],
-    summary="Отправить запрос на поиск аналога (Email)",
+    summary="Отправить запрос на поиск аналога (Email) по артикулу из каталога",
 )
 async def request_analog_email(
     art: str,
@@ -243,14 +243,14 @@ async def request_analog_email(
     client = OutlookClient(auth)
 
     # Адрес получателя (Евгения)
-    to_email = "e.skobelev@tpgt-titan.kz" # Указан в контексте
+    to_email = "e.skobelev@tpgt-titan.kz"
     subject = f"Запрос аналога: {price_obj.name} (art: {price_obj.art})"
     
     body = f"""
     <div style="font-family: Arial, sans-serif; max-width: 600px; border: 1px solid #eee; padding: 20px;">
         <h2 style="color: #004a99; border-bottom: 2px solid #004a99; padding-bottom: 10px;">Запрос на поиск аналога</h2>
         <p>Приветствую, <b>Евгений</b>!</p>
-        <p>Для подготовки коммерческого предложения менеджеру требуется подобрать аналог для следующей позиции:</p>
+        <p>Для подготовки коммерческого предложения менеджеру требуется подобрать аналог для следующей позиции из каталога:</p>
         
         <table style="width: 100%; border-collapse: collapse; margin-top: 20px;">
             <tr style="background-color: #f9f9f9;">
@@ -262,12 +262,8 @@ async def request_analog_email(
                 <td style="padding: 10px; border: 1px solid #ddd;"><code>{price_obj.art}</code></td>
             </tr>
             <tr style="background-color: #f9f9f9;">
-                <td style="padding: 10px; border: 1px solid #ddd;"><b>Поставщик:</b></td>
-                <td style="padding: 10px; border: 1px solid #ddd;">{price_obj.supplier or "Не указан"}</td>
-            </tr>
-            <tr>
-                <td style="padding: 10px; border: 1px solid #ddd;"><b>Тара:</b></td>
-                <td style="padding: 10px; border: 1px solid #ddd;">{price_obj.container_size or "---"} {price_obj.container_unit or ""}</td>
+                <td style="padding: 10px; border: 1px solid #ddd;"><b>Бренд:</b></td>
+                <td style="padding: 10px; border: 1px solid #ddd;">{price_obj.source or "Не указан"}</td>
             </tr>
         </table>
         
@@ -282,3 +278,82 @@ async def request_analog_email(
     await client.send_email(to_email=to_email, subject=subject, body=body)
     
     return {"status": "request_sent", "to": to_email}
+
+
+@router.post(
+    "/analog-requests/{request_id}/send-email",
+    dependencies=[Depends(require_permission("prices.write"))],
+    summary="Отправить запрос на поиск аналога (Email) для блокирующей позиции",
+)
+async def send_analog_request_email(
+    request_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Отправляет Email-запрос на поиск аналога для записи из AnalogRequestModel.
+    Используется для позиций, которых нет в прайсе.
+    """
+    from src.db.models.analog_request_model import AnalogRequestModel
+    from sqlalchemy import select
+    from datetime import datetime
+
+    request_obj = await db.scalar(
+        select(AnalogRequestModel).where(AnalogRequestModel.id == request_id)
+    )
+    if not request_obj:
+        raise HTTPException(status_code=404, detail=f"Analog request {request_id} not found")
+
+    auth = GraphAuth()
+    client = OutlookClient(auth)
+
+    to_email = "e.skobelev@tpgt-titan.kz"
+    product_display = request_obj.product_name or request_obj.product_code or f"ID:{request_id}"
+    subject = f"СРОЧНЫЙ ЗАПРОС АНАЛОГА: {product_display}"
+    
+    # Формируем HTML тело письма
+    body = f"""
+    <div style="font-family: Arial, sans-serif; max-width: 600px; border: 1px solid #eee; padding: 20px;">
+        <h2 style="color: #d32f2f; border-bottom: 2px solid #d32f2f; padding-bottom: 10px;">Запрос на подбор аналога</h2>
+        <p>Приветствую, <b>Евгений</b>!</p>
+        <p>В системе зафиксирована позиция, требующая ручного подбора аналога (отсутствует в текущих прайсах):</p>
+        
+        <table style="width: 100%; border-collapse: collapse; margin-top: 20px;">
+            <tr style="background-color: #f9f9f9;">
+                <td style="padding: 10px; border: 1px solid #ddd;"><b>Наименование:</b></td>
+                <td style="padding: 10px; border: 1px solid #ddd;">{request_obj.product_name or "---"}</td>
+            </tr>
+            <tr>
+                <td style="padding: 10px; border: 1px solid #ddd;"><b>Артикул:</b></td>
+                <td style="padding: 10px; border: 1px solid #ddd;"><code>{request_obj.product_code or "---"}</code></td>
+            </tr>
+            <tr style="background-color: #f9f9f9;">
+                <td style="padding: 10px; border: 1px solid #ddd;"><b>Бренд / Поставщик:</b></td>
+                <td style="padding: 10px; border: 1px solid #ddd;">{request_obj.brand or "---"} / {request_obj.supplier or "---"}</td>
+            </tr>
+            <tr>
+                <td style="padding: 10px; border: 1px solid #ddd;"><b>ID Сделки:</b></td>
+                <td style="padding: 10px; border: 1px solid #ddd;">#{request_obj.deal_id or "---"}</td>
+            </tr>
+        </table>
+        
+        <p style="margin-top: 25px; font-size: 0.9em; color: #666;">
+            Пожалуйста, подберите подходящий аналог и внесите его в базу данных Титан или ответьте на этот запрос.
+        </p>
+        <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;"/>
+        <p style="font-size: 0.8em; color: #999;"><i>Отправлено автоматически из Titan Automation System</i></p>
+    </div>
+    """
+
+    try:
+        await client.send_email(to_email=to_email, subject=subject, body=body)
+        
+        # Обновляем статус в БД
+        request_obj.request_status = "sent"
+        request_obj.sent_at = datetime.now()
+        await db.commit()
+        
+        return {"status": "success", "request_id": request_id, "sent_to": to_email}
+    except Exception as e:
+        await db.rollback()
+        logger.exception("Failed to send analog search email")
+        raise HTTPException(status_code=500, detail=f"Failed to send email: {str(e)}")

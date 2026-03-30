@@ -290,12 +290,12 @@ class PdfService:
         # Немного перераспределяем ширину в пользу последней колонки.
         col_widths = [
             8 * mm,   # №
-            68 * mm,  # Товары
-            14 * mm,  # Кол-во
-            14 * mm,  # Ед. изм.
+            64 * mm,  # Товары
+            12 * mm,  # Кол-во
+            12 * mm,  # Ед. изм.
             24 * mm,  # Цена
-            28 * mm,  # Сумма
-            14 * mm,  # Срок поставки
+            26 * mm,  # Сумма
+            24 * mm,  # Срок поставки
         ]
 
         table = Table(table_data, colWidths=col_widths, repeatRows=1)
@@ -351,11 +351,14 @@ class PdfService:
         warranty_terms = deal.get("warranty_terms") or (
             "Гарантийный срок: 12 месяцев (при надлежащих условиях хранения)"
         )
+        lead_time_val = deal.get("lead_time")
+        lead_time_text = f"Срок поставки: {lead_time_val}" if lead_time_val else None
 
         conditions = [
             payment_terms,
             delivery_terms,
             warranty_terms,
+            lead_time_text,
         ]
 
         for line in conditions:

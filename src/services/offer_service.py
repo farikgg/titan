@@ -506,9 +506,10 @@ class OfferService:
                         continue
 
                     purchase_price = float(price_obj.price)
-                    base_with_delivery = purchase_price + delivery_per_kg
-                    with_duty = base_with_delivery * (1 + duty_pct_val / 100.0)
-                    price_without_vat = with_duty * (1 + margin / 100.0)
+                    # Формула из скриншота: (Закуп + 0.70) * 1.05 + (Закуп * Маржа)
+                    landed_cost = (purchase_price + delivery_per_kg) * (1 + duty_pct_val / 100.0)
+                    margin_amount = purchase_price * (margin / 100.0)
+                    price_without_vat = landed_cost + margin_amount
 
                     if vat_enabled:
                         price_for_client = price_without_vat * (1 + vat_pct_val / 100.0)
@@ -516,14 +517,14 @@ class OfferService:
                         price_for_client = price_without_vat
 
                     item.price = Decimal(str(price_for_client))
-                    item.total = item.price * item.quantity
+                    item.total = item.price * Decimal(str(item.quantity))
 
                 await self.recalc_total(offer_id)
                 offer.vat_enabled = vat_enabled
                 changed = True
 
             elif supplier_type == "skf":
-                # SKF: (Purchase * 1.1 * 1.05) + (Purchase * 0.5)
+                # SKF: (Purchase * 1.1 * 1.05) + (Purchase * Margin)
                 delivery_pct_val = skf_delivery_pct if skf_delivery_pct is not None else 10.0
                 duty_pct_val = skf_duty_pct if skf_duty_pct is not None else 5.0
                 vat_pct_val = skf_vat_pct if skf_vat_pct is not None else 16.0
@@ -541,11 +542,10 @@ class OfferService:
                         continue
 
                     purchase_price = float(price_obj.price)
-                    landed_base = purchase_price * (1 + delivery_pct_val / 100.0)
-                    with_duty = landed_base * (1 + duty_pct_val / 100.0)
-                    # Маржа от ЗАКУПА
+                    # Формула из скриншота: (Закуп * 1.10 * 1.05) + (Закуп * Маржа)
+                    landed_cost = (purchase_price * (1 + delivery_pct_val / 100.0)) * (1 + duty_pct_val / 100.0)
                     margin_amount = purchase_price * (margin / 100.0)
-                    price_without_vat = with_duty + margin_amount
+                    price_without_vat = landed_cost + margin_amount
 
                     if vat_enabled:
                         price_for_client = price_without_vat * (1 + vat_pct_val / 100.0)
@@ -553,7 +553,7 @@ class OfferService:
                         price_for_client = price_without_vat
 
                     item.price = Decimal(str(price_for_client))
-                    item.total = item.price * item.quantity
+                    item.total = item.price * Decimal(str(item.quantity))
 
                 await self.recalc_total(offer_id)
                 offer.vat_enabled = vat_enabled

@@ -30,7 +30,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 # Bitrix user ID по умолчанию для автоматически созданных сделок
-DEFAULT_ASSIGNED_BY_ID = 109
+DEFAULT_ASSIGNED_BY_ID = 209
 
 
 async def extract_client_info(
