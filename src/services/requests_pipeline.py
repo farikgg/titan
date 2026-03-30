@@ -18,7 +18,7 @@ from src.services.deal_service import DealService
 from src.services.bitrix_service import BitrixService
 from src.services.offer_service import OfferService
 from src.services.price_service import PriceService
-from src.repositories.analog_repo import AnalogRepository
+from src.repositories.analog_repo import AnalogRepository, AnalogRequestRepository
 from src.core.bitrix import get_bitrix_client
 from src.db.initialize import async_session
 from src.app.config import settings
@@ -223,8 +223,16 @@ async def find_items_in_prices(
     parsed_items: list[dict],
 ) -> list[dict]:
     """
-    Ищет товары из письма в прайсах (prices таблица).
-    Если не найден - ищет аналоги в таблице product_analogs.
+    Enrichment: ищет товары в каталоге (prices) и подбирает аналоги.
+
+    Для каждого товара:
+    1. Ищем по артикулу в prices -> "found_in_catalog"
+    2. Если не найден, ищем подтверждённые аналоги (product_analogs, status=confirmed):
+       - Ровно 1 аналог (UC-02) -> "analog_auto" — подменяем товар, берём цену аналога
+       - Несколько аналогов (UC-03) -> "analog_multiple" — требуется выбор менеджера
+       - Ничего (UC-04) -> "analog_not_found" — требуется ручной подбор
+
+    Возвращает список dict-ов с полем enrichment_status.
     """
     result_items = []
     analog_repo = AnalogRepository()
@@ -236,7 +244,7 @@ async def find_items_in_prices(
         quantity = float(item.get("quantity", 1))
         unit = item.get("unit")
 
-        # Ищем в прайсах
+        # ---- ШАГ 1: Ищем в каталоге (prices) ----
         price_obj = None
         if art:
             price_obj = await db_session.scalar(
@@ -254,21 +262,78 @@ async def find_items_in_prices(
                 "unit": unit or getattr(price_obj, "unit", None),
                 "currency": price_obj.currency or "KZT",
                 "found": True,
+                "enrichment_status": "found_in_catalog",
                 "analogs": [],
             })
-        else:
-            # ТОВАР НЕ НАЙДЕН -> Ищем аналоги
-            analogs = []
-            if art:
-                # Нормализуем артикул для поиска аналогов
-                analogs_objs = await analog_repo.get_by_source_art(db_session, art.strip().upper())
-                for a in analogs_objs:
-                    analogs.append({
-                        "art": a.analog_art,
-                        "name": a.analog_name,
-                        "source": a.analog_source,
-                    })
+            continue
 
+        # ---- ШАГ 2: Ищем подтверждённые аналоги ----
+        confirmed_analogs = []
+        if art:
+            confirmed_analogs = await analog_repo.get_confirmed_by_source_code(
+                db_session, art.strip().upper()
+            )
+
+        if len(confirmed_analogs) == 1:
+            # UC-02: Ровно один подтверждённый аналог — автоподмена
+            analog = confirmed_analogs[0]
+            analog_code = analog.analog_product_code
+
+            # Ищем цену аналога в каталоге
+            analog_price_obj = await db_session.scalar(
+                select(PriceModel).where(PriceModel.art == analog_code)
+            )
+
+            if analog_price_obj:
+                result_items.append({
+                    "art": analog_code,
+                    "sku": analog_code,
+                    "name": analog_price_obj.name,
+                    "raw_name": raw_name,
+                    "original_art": art,
+                    "original_name": name,
+                    "price": float(analog_price_obj.price),
+                    "quantity": quantity,
+                    "unit": unit or getattr(analog_price_obj, "unit", None),
+                    "currency": analog_price_obj.currency or "KZT",
+                    "found": True,
+                    "enrichment_status": "analog_auto",
+                    "analogs": [{
+                        "art": analog.analog_product_code,
+                        "name": analog.analog_product_name,
+                        "source": analog.supplier_name,
+                    }],
+                })
+            else:
+                # Аналог подтверждён, но его нет в прайсе — считаем ненайденным
+                result_items.append({
+                    "art": art,
+                    "sku": art,
+                    "name": name or (f"Товар {art}" if art else "Товар без артикула"),
+                    "raw_name": raw_name,
+                    "price": float(item.get("price", 0)),
+                    "quantity": quantity,
+                    "unit": unit,
+                    "currency": item.get("currency", "KZT"),
+                    "found": False,
+                    "enrichment_status": "analog_not_in_catalog",
+                    "analogs": [{
+                        "art": analog.analog_product_code,
+                        "name": analog.analog_product_name,
+                        "source": analog.supplier_name,
+                    }],
+                })
+
+        elif len(confirmed_analogs) > 1:
+            # UC-03: Несколько подтверждённых аналогов — нужен выбор менеджера
+            analogs_list = [
+                {
+                    "art": a.analog_product_code,
+                    "name": a.analog_product_name,
+                    "source": a.supplier_name,
+                }
+                for a in confirmed_analogs
+            ]
             result_items.append({
                 "art": art,
                 "sku": art,
@@ -279,7 +344,24 @@ async def find_items_in_prices(
                 "unit": unit,
                 "currency": item.get("currency", "KZT"),
                 "found": False,
-                "analogs": analogs,
+                "enrichment_status": "analog_multiple",
+                "analogs": analogs_list,
+            })
+
+        else:
+            # UC-04: Аналогов не найдено
+            result_items.append({
+                "art": art,
+                "sku": art,
+                "name": name or (f"Товар {art}" if art else "Товар без артикула"),
+                "raw_name": raw_name,
+                "price": float(item.get("price", 0)),
+                "quantity": quantity,
+                "unit": unit,
+                "currency": item.get("currency", "KZT"),
+                "found": False,
+                "enrichment_status": "analog_not_found",
+                "analogs": [],
             })
 
     return result_items
@@ -454,7 +536,70 @@ async def process_requests_message(msg_dict: dict) -> str:
             manager_email, manager_name, company_id, assigned_by_id
         )
 
-    # -------- 5. СОЗДАНИЕ СДЕЛКИ В BITRIX24 --------
+    # -------- 5. ENRICHMENT: ПОИСК ТОВАРОВ В ПРАЙСАХ И АНАЛОГАХ --------
+    async with async_session() as db_session:
+        items_with_status = await find_items_in_prices(db_session, parsed_items)
+
+        # Классифицируем результаты enrichment
+        found_count = sum(1 for i in items_with_status if i.get("found"))
+        auto_analog_count = sum(
+            1 for i in items_with_status if i.get("enrichment_status") == "analog_auto"
+        )
+        # Товары, которые блокируют автоматическое создание сделки
+        blocking_items = [
+            i for i in items_with_status
+            if i.get("enrichment_status") in ("analog_multiple", "analog_not_found", "analog_not_in_catalog")
+        ]
+        has_blocking = len(blocking_items) > 0
+
+        # -------- 5.1. ЕСЛИ ЕСТЬ БЛОКИРУЮЩИЕ ПОЗИЦИИ — НЕ СОЗДАЁМ СДЕЛКУ --------
+        if has_blocking:
+            # Сохраняем analog_requests для каждой блокирующей позиции
+            analog_request_repo = AnalogRequestRepository()
+            for bl_item in blocking_items:
+                await analog_request_repo.create(
+                    db_session,
+                    product_code=bl_item.get("art"),
+                    product_name=bl_item.get("name"),
+                    brand=None,
+                    supplier=None,
+                    deal_id=None,  # сделка не создана
+                    client_id=str(contact_email) if contact_email else None,
+                    manager_id=None,
+                    request_status="pending",
+                )
+            await db_session.commit()
+
+            logger.warning(
+                "Заявка из письма '%s' приостановлена: %d позиций требуют действий менеджера",
+                subject, len(blocking_items),
+            )
+
+            # Уведомление о приостановленной заявке
+            await _send_blocked_notification(
+                tg=tg,
+                subject=subject,
+                sender=sender,
+                contact_name=contact_name,
+                company_name=company_name,
+                contact_phone=contact_phone,
+                contact_email=contact_email,
+                manager_name=manager_name,
+                manager_email=manager_email,
+                to_recipients=to_recipients,
+                items_with_status=items_with_status,
+                blocking_items=blocking_items,
+                found_count=found_count,
+                auto_analog_count=auto_analog_count,
+            )
+
+            return (
+                f"Blocked: {len(blocking_items)} items need manager action. "
+                f"Total: {len(items_with_status)}, Found: {found_count}, "
+                f"Auto-analog: {auto_analog_count}"
+            )
+
+    # -------- 6. СОЗДАНИЕ СДЕЛКИ В BITRIX24 (только если всё найдено) --------
     deal_id = None
     try:
         deal_id = await deal_service.create_deal_from_email(
@@ -472,17 +617,13 @@ async def process_requests_message(msg_dict: dict) -> str:
 
     except Exception:
         logger.exception("Ошибка создания сделки в Bitrix24 из письма requests@...")
-        return f"Error creating deal"
+        return "Error creating deal"
 
     if not deal_id:
         return "Failed to create deal"
 
-    # -------- 6. ПОИСК ТОВАРОВ В ПРАЙСАХ И СОЗДАНИЕ КОРЗИНЫ --------
+    # -------- 7. СОЗДАНИЕ КОРЗИНЫ (OFFER) --------
     async with async_session() as db_session:
-        # Ищем товары в прайсах
-        items_with_status = await find_items_in_prices(db_session, parsed_items)
-
-        # Создаём корзину для сделки
         offer_service = OfferService(db_session)
         currency = items_with_status[0].get("currency", "KZT") if items_with_status else "KZT"
 
@@ -495,15 +636,12 @@ async def process_requests_message(msg_dict: dict) -> str:
                 payment_terms=extraction_result.get("payment_terms"),
                 delivery_terms=extraction_result.get("delivery_terms"),
                 warranty_terms=extraction_result.get("warranty_terms"),
-                # Новые поля из Python-логики (маршрутизация)
                 manager_email=manager_email,
                 client_email=contact_email,
-                # Новые поля из Gemini (коммерция)
                 incoterms=extraction_result.get("incoterms"),
                 deadline=extraction_result.get("deadline"),
                 delivery_place=extraction_result.get("delivery_place"),
                 notes=", ".join(extraction_result.get("dates", [])) if extraction_result.get("dates") else extraction_result.get("notes"),
-                # Новые поля для шапки PDF
                 client_company_name=company_name,
                 client_address=extraction_result.get("delivery_place"),
                 subject=extraction_result.get("subject"),
@@ -516,87 +654,157 @@ async def process_requests_message(msg_dict: dict) -> str:
             )
         except Exception:
             logger.exception("Ошибка создания корзины для сделки deal_id=%s", deal_id)
-            # Продолжаем, даже если корзина не создана
 
-    # -------- 7. TELEGRAM NOTIFICATION --------
-    found_count = sum(1 for item in items_with_status if item.get("found"))
+    # -------- 8. TELEGRAM NOTIFICATION (успешная сделка) --------
     not_found_count = len(items_with_status) - found_count
 
-    # Формируем информацию о клиенте
-    client_info_text = ""
-    if contact_name:
-        client_info_text += f"👤 Клиент: {contact_name}\n"
-    if company_name:
-        client_info_text += f"🏢 Компания: {company_name}\n"
-    if contact_phone:
-        client_info_text += f"📞 Телефон: {contact_phone}\n"
-    if contact_email and contact_email != sender:
-        client_info_text += f"📧 Email: {contact_email}\n"
-    
-    # Формируем информацию о менеджере
-    manager_info_text = ""
-    if manager_name:
-        manager_info_text += f"👔 Менеджер: {manager_name}\n"
-    if manager_email:
-        manager_info_text += f"📧 Email менеджера: {manager_email}\n"
-    elif not manager_name:
-        # Если менеджер не определён, но есть получатели
-        if to_recipients:
-            manager_emails = []
-            for recipient in to_recipients:
-                if isinstance(recipient, dict):
-                    email = recipient.get("emailAddress", {}).get("address", "")
-                    if email:
-                        manager_emails.append(email)
-                elif isinstance(recipient, str):
-                    manager_emails.append(recipient)
-            if manager_emails:
-                manager_info_text += f"📧 Получатель: {', '.join(manager_emails)}\n"
+    text = _build_success_notification(
+        subject=subject,
+        sender=sender,
+        contact_name=contact_name,
+        company_name=company_name,
+        contact_phone=contact_phone,
+        contact_email=contact_email,
+        manager_name=manager_name,
+        manager_email=manager_email,
+        to_recipients=to_recipients,
+        items_with_status=items_with_status,
+        found_count=found_count,
+        auto_analog_count=auto_analog_count,
+        not_found_count=not_found_count,
+        deal_id=deal_id,
+    )
 
-    deal_text = f"🏢 ID сделки в Битрикс24: #{deal_id}"
+    for chat_id in get_admin_chat_ids():
+        await tg.send_message(chat_id=chat_id, text=text)
 
+    return f"Deal: {deal_id}, Items: {len(items_with_status)}, Found: {found_count}, Auto-analog: {auto_analog_count}"
+
+
+# ---------------------------------------------------------------------------
+# Вспомогательные функции для уведомлений
+# ---------------------------------------------------------------------------
+
+def _build_success_notification(
+    *,
+    subject, sender, contact_name, company_name, contact_phone, contact_email,
+    manager_name, manager_email, to_recipients, items_with_status,
+    found_count, auto_analog_count, not_found_count, deal_id,
+) -> str:
+    """Формирует текст уведомления об успешно созданной сделке."""
     text = (
         "📧 Обработано письмо из requests@...\n"
         f"Тема: {subject}\n"
         f"От: {sender}\n"
     )
-    
-    if client_info_text:
-        text += f"\n{client_info_text}"
-    
-    if manager_info_text:
-        text += f"\n{manager_info_text}"
-    
-    text += (
-        f"\n📦 Товаров спарсено: {len(items_with_status)}\n"
-        f"✅ Найдено в прайсах: {found_count}\n"
-        f"❌ Не найдено: {not_found_count}\n"
+
+    text += _format_client_manager_info(
+        contact_name, company_name, contact_phone, contact_email, sender,
+        manager_name, manager_email, to_recipients,
     )
 
-    # Детальная информация по отсутствующим товарам
-    if not_found_count > 0:
-        text += "\n⚠️ ОТСУТСТВУЮЩИЕ ПОЗИЦИИ:\n"
-        for item in items_with_status:
-            if not item.get("found"):
-                item_name = item.get("name") or item.get("art") or "???"
-                text += f"• {item_name}"
-                if item.get("art"):
-                    text += f" (арт. {item.get('art')})"
-                text += "\n"
-                
-                # Показываем аналоги, если есть
-                analogs = item.get("analogs", [])
-                if analogs:
-                    text += "   🔍 Есть аналоги в базе:\n"
-                    for a in analogs:
-                        text += f"   - {a['name']} ({a['art']}) [{a['source']}]\n"
-                else:
-                    text += "   ❌ Аналогов не найдено. Рекомендуется запросить поиск аналога у поставщика.\n"
+    text += (
+        f"\n📦 Товаров спарсено: {len(items_with_status)}\n"
+        f"✅ Найдено в каталоге: {found_count}\n"
+    )
+    if auto_analog_count:
+        text += f"🔄 Автоподмена по аналогу: {auto_analog_count}\n"
 
-    text += f"\n{deal_text}"
+    # Детали автозаменённых товаров
+    auto_items = [i for i in items_with_status if i.get("enrichment_status") == "analog_auto"]
+    if auto_items:
+        text += "\n🔄 АВТОМАТИЧЕСКИ ПОДМЕНЁННЫЕ ПОЗИЦИИ:\n"
+        for item in auto_items:
+            text += (
+                f"• {item.get('original_name', '?')} (арт. {item.get('original_art', '?')}) "
+                f"→ {item['name']} (арт. {item['art']})\n"
+            )
 
-    # Шлём уведомление всем админам
+    text += f"\n🏢 ID сделки в Битрикс24: #{deal_id}"
+    return text
+
+
+async def _send_blocked_notification(
+    *,
+    tg, subject, sender, contact_name, company_name, contact_phone, contact_email,
+    manager_name, manager_email, to_recipients, items_with_status,
+    blocking_items, found_count, auto_analog_count,
+):
+    """Отправляет уведомление о заблокированной заявке (ожидает действий менеджера)."""
+    text = (
+        "🚫 ЗАЯВКА ПРИОСТАНОВЛЕНА — требуются действия менеджера\n"
+        f"Тема: {subject}\n"
+        f"От: {sender}\n"
+    )
+
+    text += _format_client_manager_info(
+        contact_name, company_name, contact_phone, contact_email, sender,
+        manager_name, manager_email, to_recipients,
+    )
+
+    text += (
+        f"\n📦 Товаров спарсено: {len(items_with_status)}\n"
+        f"✅ Найдено в каталоге: {found_count}\n"
+    )
+    if auto_analog_count:
+        text += f"🔄 Автоподмена по аналогу: {auto_analog_count}\n"
+    text += f"⛔ Требуют действий: {len(blocking_items)}\n"
+
+    text += "\n⚠️ ПОЗИЦИИ, ТРЕБУЮЩИЕ ДЕЙСТВИЙ:\n"
+    for item in blocking_items:
+        status = item.get("enrichment_status")
+        item_name = item.get("name") or item.get("art") or "???"
+        text += f"• {item_name}"
+        if item.get("art"):
+            text += f" (арт. {item.get('art')})"
+
+        if status == "analog_multiple":
+            text += " — найдено несколько аналогов, выберите в Mini App\n"
+            for a in item.get("analogs", []):
+                text += f"   - {a.get('name', '?')} ({a.get('art', '?')})\n"
+        elif status == "analog_not_found":
+            text += " — аналог не найден\n"
+        elif status == "analog_not_in_catalog":
+            text += " — аналог найден, но отсутствует в прайсе\n"
+        else:
+            text += "\n"
+
+    text += "\n💡 Откройте Mini App для обработки заявки."
+
     for chat_id in get_admin_chat_ids():
         await tg.send_message(chat_id=chat_id, text=text)
 
-    return f"Deal: {deal_id}, Items: {len(items_with_status)}, Found: {found_count}, Not found: {not_found_count}"
+
+def _format_client_manager_info(
+    contact_name, company_name, contact_phone, contact_email, sender,
+    manager_name, manager_email, to_recipients,
+) -> str:
+    """Общий блок информации о клиенте и менеджере для уведомлений."""
+    text = ""
+
+    if contact_name:
+        text += f"\n👤 Клиент: {contact_name}\n"
+    if company_name:
+        text += f"🏢 Компания: {company_name}\n"
+    if contact_phone:
+        text += f"📞 Телефон: {contact_phone}\n"
+    if contact_email and contact_email != sender:
+        text += f"📧 Email: {contact_email}\n"
+
+    if manager_name:
+        text += f"\n👔 Менеджер: {manager_name}\n"
+    if manager_email:
+        text += f"📧 Email менеджера: {manager_email}\n"
+    elif not manager_name and to_recipients:
+        manager_emails = []
+        for recipient in to_recipients:
+            if isinstance(recipient, dict):
+                email = recipient.get("emailAddress", {}).get("address", "")
+                if email:
+                    manager_emails.append(email)
+            elif isinstance(recipient, str):
+                manager_emails.append(recipient)
+        if manager_emails:
+            text += f"\n📧 Получатель: {', '.join(manager_emails)}\n"
+
+    return text
