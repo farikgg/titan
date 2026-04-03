@@ -341,7 +341,23 @@ def requests_process(self, msg_dict):
 
         try:
             subject = msg_dict.get("subject", "").lower()
-            if "запрос аналога" in subject or "запрос на поиск аналога" in subject:
+            conversation_id = msg_dict.get("conversationId")
+
+            is_analog_reply = False
+            async with async_session() as session_check:
+                if conversation_id:
+                    from sqlalchemy import select
+                    from src.db.models.analog_request_model import AnalogRequestModel
+                    req = await session_check.scalar(
+                        select(AnalogRequestModel).where(AnalogRequestModel.email_thread_id == conversation_id)
+                    )
+                    if req:
+                        is_analog_reply = True
+
+            if not is_analog_reply and ("запрос аналога" in subject or "запрос на поиск аналога" in subject):
+                is_analog_reply = True
+
+            if is_analog_reply:
                 from src.services.analog_parser import AnalogParser
                 from src.services.telegram_service import TelegramService, get_admin_chat_ids
                 parser = AnalogParser()
@@ -354,10 +370,18 @@ def requests_process(self, msg_dict):
                             f"Для товара: `{analog.source_product_code}`\n"
                             f"Предложен: *{analog.analog_product_name}* (`{analog.analog_product_code}`)\n"
                             f"Комментарий: {analog.notes}\n\n"
-                            f"Ожидает подтверждения: `PATCH /api/v1/analogs/{analog.id}/confirm`"
+                            f"Ожидает подтверждения: меню Аналоги в админке или PATCH /api/v1/analogs/{analog.id}/confirm"
                         )
+                        kb = {
+                            "inline_keyboard": [
+                                [
+                                    {"text": "✅ Подтвердить", "callback_data": f"confirm_analog:{analog.id}"},
+                                    {"text": "❌ Отклонить", "callback_data": f"reject_analog:{analog.id}"}
+                                ]
+                            ]
+                        }
                         for chat_id in get_admin_chat_ids():
-                            await tg.send_message(chat_id, text, parse_mode="Markdown")
+                            await tg.send_message(chat_id, text, keyboard=kb)
                 result = "Analog Reply Processed"
             else:
                 result = await process_requests_message(msg_dict)

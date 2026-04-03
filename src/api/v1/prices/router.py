@@ -349,11 +349,12 @@ async def send_analog_request_email(
     """
 
     try:
-        await client.send_email(to_email=to_email, subject=subject, body=body)
+        result = await client.send_email(to_email=to_email, subject=subject, body=body)
         
         # Обновляем статус в БД
         request_obj.request_status = "sent"
         request_obj.sent_at = datetime.now()
+        request_obj.email_thread_id = result.get("conversationId")
         await db.commit()
         
         return {"status": "success", "request_id": request_id, "sent_to": to_email}

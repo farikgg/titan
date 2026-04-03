@@ -88,32 +88,47 @@ class OutlookClient:
 
         return parsed
 
-    async def send_email(self, to_email: str, subject: str, body: str):
+    async def send_email(self, to_email: str, subject: str, body: str) -> dict:
         """
-        Отправляет письмо через Microsoft Graph API.
+        Отправляет письмо через Microsoft Graph API в два этапа:
+        создание черновика (для получения ID) и его отправка.
+        Возвращает {'id': ..., 'conversationId': ...}
         """
         mailbox = self.mailbox or "testAI@tpgt-titan.com"
-        url = f"{GRAPH_BASE}/users/{mailbox}/sendMail"
+        draft_url = f"{GRAPH_BASE}/users/{mailbox}/messages"
 
         payload = {
-            "message": {
-                "subject": subject,
-                "body": {
-                    "contentType": "HTML",
-                    "content": body,
-                },
-                "toRecipients": [
-                    {
-                        "emailAddress": {
-                            "address": to_email,
-                        }
-                    }
-                ],
+            "subject": subject,
+            "body": {
+                "contentType": "HTML",
+                "content": body,
             },
-            "saveToSentItems": "true",
+            "toRecipients": [
+                {
+                    "emailAddress": {
+                        "address": to_email,
+                    }
+                }
+            ],
         }
 
         async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.post(url, headers=await self._headers(), json=payload)
-            resp.raise_for_status()
-            return True
+            headers = await self._headers()
+            
+            # 1. Создаем черновик
+            draft_resp = await client.post(draft_url, headers=headers, json=payload)
+            draft_resp.raise_for_status()
+            draft_data = draft_resp.json()
+            
+            draft_id = draft_data.get("id")
+            conversation_id = draft_data.get("conversationId")
+
+            # 2. Отправляем черновик
+            send_url = f"{GRAPH_BASE}/users/{mailbox}/messages/{draft_id}/send"
+            send_resp = await client.post(send_url, headers=headers)
+            send_resp.raise_for_status()
+
+            return {
+                "id": draft_id,
+                "conversationId": conversation_id,
+            }

@@ -20,6 +20,9 @@ class AnalogRequestModel(Base):
     deal_id: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)
     client_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
+    # --- Связь с почтой ---
+    email_thread_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True, comment="conversationId из почты")
+
     # --- Товар, для которого ищем аналог ---
     product_name: Mapped[str | None] = mapped_column(String(500), nullable=True)
     product_code: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
