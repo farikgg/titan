@@ -299,6 +299,42 @@ async def telegram_webhook(update: dict):
                         tg.back_button(),
                 )
 
+            # ---------------- ANALOG CONFIRMATION ----------------
+            if data.startswith("confirm_analog:"):
+                from src.db.models.product_analog_model import ProductAnalogModel
+                analog_id = int(data.split(":")[1])
+                analog = await session.get(ProductAnalogModel, analog_id)
+                if not analog:
+                    return await tg.edit_message(chat_id, message_id, "❌ Аналог не найден", tg.back_button())
+                
+                analog.status = "confirmed"
+                analog.confirmed_by = user.id
+                await session.commit()
+                
+                return await tg.edit_message(
+                    chat_id, message_id,
+                    f"✅ Аналог успешно подтвержден!\n"
+                    f"Исходный товар: {analog.source_product_code}\n"
+                    f"Утвержденный аналог: {analog.analog_product_name}",
+                    tg.back_button()
+                )
+
+            if data.startswith("reject_analog:"):
+                from src.db.models.product_analog_model import ProductAnalogModel
+                analog_id = int(data.split(":")[1])
+                analog = await session.get(ProductAnalogModel, analog_id)
+                if not analog:
+                    return await tg.edit_message(chat_id, message_id, "❌ Аналог не найден", tg.back_button())
+                
+                analog.status = "rejected"
+                await session.commit()
+                
+                return await tg.edit_message(
+                    chat_id, message_id,
+                    f"❌ Предложенный аналог отклонен.",
+                    tg.back_button()
+                )
+
             # ---------------- HISTORY ----------------
             if data == "history":
                 offers = await offer_service.get_user_offers(user.id)

@@ -320,8 +320,34 @@ class OfferService:
                 )
 
             current_name = price_obj.name if price_obj else name
-            if not found and not current_name.startswith("[НЕ НАЙДЕН]"):
-                current_name = f"[НЕ НАЙДЕН] {current_name}"
+            
+            if not found:
+                from src.repositories.analog_repo import AnalogRepository
+                analog_repo = AnalogRepository()
+                
+                analogs = await analog_repo.get_all_for_product(self.db, code=sku, name=name)
+                
+                if len(analogs) == 1:
+                    analog = analogs[0]
+                    # Автоподстановка
+                    sku = analog.analog_product_code
+                    current_name = f"[АНАЛОГ ИЗ БД] {analog.analog_product_name or analog.analog_product_code}"
+                    
+                    # Устанавливаем цену аналога, если он есть в прайсах
+                    price_obj = await self.db.scalar(
+                        select(PriceModel).where(PriceModel.art == sku)
+                    )
+                    if price_obj:
+                        price = Decimal(str(price_obj.price))
+                        if price_obj.container_unit:
+                            unit = price_obj.container_unit
+                    found = True
+                elif len(analogs) > 1:
+                    if not current_name.startswith("[НЕ НАЙДЕН"):
+                        current_name = f"[НЕ НАЙДЕН - {len(analogs)} АНАЛОГОВ] {current_name}"
+                else:
+                    if not current_name.startswith("[НЕ НАЙДЕН]"):
+                        current_name = f"[НЕ НАЙДЕН] {current_name}"
 
             item = OfferItemModel(
                 offer_id=offer.id,

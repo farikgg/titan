@@ -13,6 +13,7 @@ from src.api.v1.webhooks.router import router as webhooks_router
 from src.api.v1.webhooks.router import _handle_bitrix_webhook
 from src.api.v1.telegram.router import router as telegram_router
 from src.api.v1.offers.router import router as offer_router
+from src.api.v1.analogs.router import router as analogs_router
 
 
 from src.core.exceptions import *
@@ -74,6 +75,7 @@ app.include_router(deals_router)
 app.include_router(webhooks_router)
 app.include_router(telegram_router)
 app.include_router(offer_router)
+app.include_router(analogs_router)
 
 # Дубликат роутов под префиксом /api/v1 — для фронта и домена aliks.fun
 api_v1 = APIRouter(prefix="/api/v1")
@@ -84,6 +86,7 @@ api_v1.include_router(deals_router)
 api_v1.include_router(webhooks_router)
 api_v1.include_router(telegram_router)
 api_v1.include_router(offer_router)
+api_v1.include_router(analogs_router)
 app.include_router(api_v1)
 
 

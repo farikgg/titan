@@ -1,11 +1,72 @@
-from sqlalchemy import select, delete
+import re
+from sqlalchemy import select, delete, or_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.db.models.product_analog_model import ProductAnalogModel
 from src.db.models.analog_request_model import AnalogRequestModel
 
 
+def normalize_code(code: str) -> str:
+    """Удаляет пробелы, дефисы и нижние подчеркивания, приводит к верхнему регистру."""
+    if not code:
+        return ""
+    return re.sub(r'[\s\-_]', '', str(code)).upper()
+
+
 class AnalogRepository:
+
+    async def get_all_for_product(
+        self, db: AsyncSession, code: str | None, name: str | None
+    ) -> list[ProductAnalogModel]:
+        """
+        Агрегированный поиск подтвержденных аналогов.
+        Ищет по:
+        1. Точному артикулу
+        2. Нормализованному артикулу (на лету в БД)
+        3. Имени (ilike)
+        Возвращает дедуплицированный список.
+        """
+        if not code and not name:
+            return []
+            
+        conditions = []
+        if code:
+            # 1. Точный код
+            conditions.append(ProductAnalogModel.source_product_code == code)
+            
+            # 2. Нормализованный код
+            norm_code = normalize_code(code)
+            if norm_code:
+                db_code = func.upper(
+                    func.replace(func.replace(func.replace(ProductAnalogModel.source_product_code, ' ', ''), '-', ''), '_', '')
+                )
+                conditions.append(db_code == norm_code)
+                
+        if name:
+            # 3. ILIKE по имени
+            conditions.append(ProductAnalogModel.source_product_name.ilike(f"%{name}%"))
+            
+        stmt = (
+            select(ProductAnalogModel)
+            .where(
+                ProductAnalogModel.status == "confirmed",
+                or_(*conditions)
+            )
+            .order_by(ProductAnalogModel.created_at.desc())  # Последние первыми
+        )
+        
+        result = await db.execute(stmt)
+        records = result.scalars().all()
+        
+        # Дедупликация (с сохранением сортировки)
+        seen = set()
+        deduped = []
+        for r in records:
+            if r.id not in seen:
+                seen.add(r.id)
+                deduped.append(r)
+                
+        return deduped
 
     async def get_confirmed_by_source_code(
         self, db: AsyncSession, source_product_code: str

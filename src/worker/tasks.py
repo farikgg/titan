@@ -145,7 +145,35 @@ def ai_process(self, msg_dict):
             await session.commit()
 
         try:
-            result = await process_fuchs_message(msg_dict)
+            subject = msg_dict.get("subject", "").lower()
+            if "запрос аналога" in subject or "запрос на поиск аналога" in subject:
+                from src.services.analog_parser import AnalogParser
+                from src.services.telegram_service import TelegramService, get_admin_chat_ids
+                parser = AnalogParser()
+                async with async_session() as session:
+                    analog = await parser.process_analog_reply(session, msg_dict)
+                    if analog:
+                        tg = TelegramService()
+                        text = (
+                            f"🤖 *Новый найденный аналог*\n"
+                            f"Для товара: `{analog.source_product_code}`\n"
+                            f"Предложен: *{analog.analog_product_name}* (`{analog.analog_product_code}`)\n"
+                            f"Комментарий: {analog.notes}\n\n"
+                            f"Ожидает подтверждения: меню Аналоги в админке или PATCH /api/v1/analogs/{analog.id}/confirm"
+                        )
+                        kb = {
+                            "inline_keyboard": [
+                                [
+                                    {"text": "✅ Подтвердить", "callback_data": f"confirm_analog:{analog.id}"},
+                                    {"text": "❌ Отклонить", "callback_data": f"reject_analog:{analog.id}"}
+                                ]
+                            ]
+                        }
+                        for chat_id in get_admin_chat_ids():
+                            await tg.send_message(chat_id, text, keyboard=kb)
+                result = "Analog Reply Processed"
+            else:
+                result = await process_fuchs_message(msg_dict)
 
             async with async_session() as session:
                 processing = await session.scalar(
@@ -312,7 +340,27 @@ def requests_process(self, msg_dict):
             await session.commit()
 
         try:
-            result = await process_requests_message(msg_dict)
+            subject = msg_dict.get("subject", "").lower()
+            if "запрос аналога" in subject or "запрос на поиск аналога" in subject:
+                from src.services.analog_parser import AnalogParser
+                from src.services.telegram_service import TelegramService, get_admin_chat_ids
+                parser = AnalogParser()
+                async with async_session() as session:
+                    analog = await parser.process_analog_reply(session, msg_dict)
+                    if analog:
+                        tg = TelegramService()
+                        text = (
+                            f"🤖 *Новый найденный аналог*\n"
+                            f"Для товара: `{analog.source_product_code}`\n"
+                            f"Предложен: *{analog.analog_product_name}* (`{analog.analog_product_code}`)\n"
+                            f"Комментарий: {analog.notes}\n\n"
+                            f"Ожидает подтверждения: `PATCH /api/v1/analogs/{analog.id}/confirm`"
+                        )
+                        for chat_id in get_admin_chat_ids():
+                            await tg.send_message(chat_id, text, parse_mode="Markdown")
+                result = "Analog Reply Processed"
+            else:
+                result = await process_requests_message(msg_dict)
 
             async with async_session() as session:
                 processing = await session.scalar(
