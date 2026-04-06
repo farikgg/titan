@@ -17,11 +17,11 @@ from src.api.v1.analogs.router import router as analogs_router
 
 
 from src.core.exceptions import *
-
 ALLOWED_ORIGINS = {
     "http://localhost:5173",
     "http://127.0.0.1:5173",
-    "http://91.243.71.174:3002",
+    "https://tender.openbrain.kz",
+    "http://tender.openbrain.kz",
 }
 
 
@@ -29,7 +29,7 @@ def _cors_headers(origin: str | None) -> dict[str, str]:
     if origin and (origin in ALLOWED_ORIGINS or "trycloudflare.com" in origin):
         allow_origin = origin
     else:
-        allow_origin = "http://91.243.71.174:3002"
+        allow_origin = "https://tender.openbrain.kz"
     return {
         "Access-Control-Allow-Origin": allow_origin,
         "Access-Control-Allow-Credentials": "true",
@@ -97,7 +97,7 @@ async def cors_preflight(rest: str, request: Request):
     allow = (
         origin
         if (origin in ALLOWED_ORIGINS or "trycloudflare.com" in origin)
-        else "http://91.243.71.174:3002"
+        else "https://tender.openbrain.kz"
     )
     return Response(
         status_code=200,
