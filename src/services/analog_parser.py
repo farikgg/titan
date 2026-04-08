@@ -59,10 +59,11 @@ class AnalogParser:
             raw_response = response.text
             
             # Удаляем маркдаун обёртку, если она есть
-            if raw_response.startswith("```json"):
-                raw_response = raw_response.replace("```json\\n", "").replace("```", "")
+            raw_response = raw_response.strip()
             if raw_response.startswith("```"):
-                raw_response = raw_response.replace("```\\n", "").replace("```", "")
+                raw_response = re.sub(r"^```(?:json)?\s*", "", raw_response)
+                raw_response = re.sub(r"\s*```$", "", raw_response)
+                raw_response = raw_response.strip()
                 
             try:
                 raw_json = json.loads(raw_response)
