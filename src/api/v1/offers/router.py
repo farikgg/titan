@@ -332,6 +332,7 @@ async def update_terms(
             payment_terms=body.payment_terms,
             delivery_terms=body.delivery_terms,
             warranty_terms=body.warranty_terms,
+            lead_time=body.lead_time,
             currency=body.currency,
             supplier_type=body.supplier_type,
             fuchs_margin_pct=body.fuchs_margin_pct,
