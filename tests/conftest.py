@@ -44,6 +44,23 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+import os
+# Ставим заглушки для обязательных переменных окружения, 
+# чтобы pydantic Settings не падал при импорте.
+os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
+os.environ.setdefault("ADMIN_SECRET_TOKEN", "test-token")
+os.environ.setdefault("SKF_API_KEY", "test")
+os.environ.setdefault("SKF_API_SECRET", "test")
+os.environ.setdefault("SKF_SALES_UNIT_ID", "test")
+os.environ.setdefault("SKF_CUSTOMER_ID", "test")
+os.environ.setdefault("AZURE_TENANT_ID", "test")
+os.environ.setdefault("AZURE_CLIENT_ID", "test")
+os.environ.setdefault("AZURE_CLIENT_SECRET", "test")
+os.environ.setdefault("GOOGLE_API_KEY", "test-key-for-gemini")
+os.environ.setdefault("TELEGRAM_BOT_TOKEN", "test")
+os.environ.setdefault("TELEGRAM_CHAT_ID", "test")
+os.environ.setdefault("ANALOG_REQUEST_RECIPIENT", "test@example.com")
+
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 

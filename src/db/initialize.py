@@ -7,13 +7,18 @@ from src.app.config import settings
 
 logger = logging.getLogger(__name__)
 
-engine = create_async_engine(
-    url=settings.DATABASE_URL,
-    pool_size=20, # ! maximum amount of sessions, may need to increment it
-    max_overflow=10,
-    pool_recycle=3600,
-    pool_pre_ping=True
-)
+engine_kwargs = {
+    "url": settings.DATABASE_URL,
+    "pool_recycle": 3600,
+    "pool_pre_ping": True,
+}
+
+# SQLite не поддерживает pool_size и max_overflow
+if not settings.DATABASE_URL.startswith("sqlite"):
+    engine_kwargs["pool_size"] = 20
+    engine_kwargs["max_overflow"] = 10
+
+engine = create_async_engine(**engine_kwargs)
 
 async_session = async_sessionmaker(bind=engine, class_=AsyncSession, autoflush=True, expire_on_commit=False)
 

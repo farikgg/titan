@@ -325,6 +325,7 @@ class OfferService:
                 from src.repositories.analog_repo import AnalogRepository
                 analog_repo = AnalogRepository()
                 
+                # 1. Поиск подтвержденных аналогов в БД
                 analogs = await analog_repo.get_all_for_product(self.db, code=sku, name=name)
                 
                 if len(analogs) == 1:
@@ -342,12 +343,63 @@ class OfferService:
                         if price_obj.container_unit:
                             unit = price_obj.container_unit
                     found = True
-                elif len(analogs) > 1:
-                    if not current_name.startswith("[НЕ НАЙДЕН"):
-                        current_name = f"[НЕ НАЙДЕН - {len(analogs)} АНАЛОГОВ] {current_name}"
                 else:
-                    if not current_name.startswith("[НЕ НАЙДЕН]"):
-                        current_name = f"[НЕ НАЙДЕН] {current_name}"
+                    # 2. Если в БД нет (или их много), пробуем AI-поиск
+                    from src.services.analog_ai_search import AnalogAISearch
+                    ai_search_service = AnalogAISearch()
+                    
+                    brand_guess = item_data.get("brand")
+                    ai_result = await ai_search_service.search(
+                        self.db,
+                        source_name=name,
+                        source_code=sku,
+                        source_brand=brand_guess
+                    )
+                    
+                    if ai_result["status"] == "auto":
+                        sku = ai_result["analog_product_code"]
+                        current_name = f"[АНАЛОГ ИИ] {ai_result['analog_product_name'] or ai_result['analog_product_code']}"
+                        
+                        # Логирование: товар, кандидат, score, reason
+                        logger.info(
+                            "[АНАЛОГ ИИ] Товар: %s, Кандидат: %s, Score: %s, Reason: %s",
+                            name, sku, ai_result["score"], ai_result["reason"]
+                        )
+                        
+                        # Сохранять AI-найденный аналог в product_analogs со статусом new + added_from="ai"
+                        try:
+                            await analog_repo.create(
+                                self.db,
+                                source_art=item_data.get("sku") or sku,
+                                analog_art=ai_result["analog_product_code"],
+                                analog_name=ai_result["analog_product_name"],
+                                analog_brand=ai_result["analog_brand"],
+                                source_product_name=name,
+                                source_brand=brand_guess,
+                                confidence_level=ai_result["score"],
+                                match_type=ai_result["match_type"],
+                                status="new",
+                                added_from="ai",
+                                notes=ai_result["reason"]
+                            )
+                        except Exception as e:
+                            logger.error("Failed to save AI analog to DB: %s", e)
+
+                        # Устанавливаем цену аналога, если он есть в прайсах
+                        price_obj = await self.db.scalar(
+                            select(PriceModel).where(PriceModel.art == sku)
+                        )
+                        if price_obj:
+                            price = Decimal(str(price_obj.price))
+                            if price_obj.container_unit:
+                                unit = price_obj.container_unit
+                        found = True
+                    elif len(analogs) > 1:
+                        if not current_name.startswith("[НЕ НАЙДЕН"):
+                            current_name = f"[НЕ НАЙДЕН - {len(analogs)} АНАЛОГОВ] {current_name}"
+                    else:
+                        if not current_name.startswith("[НЕ НАЙДЕН]"):
+                            current_name = f"[НЕ НАЙДЕН] {current_name}"
 
             item = OfferItemModel(
                 offer_id=offer.id,
