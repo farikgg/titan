@@ -233,12 +233,46 @@ async def request_analog_email(
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Находит товар по артикулу и отправляет Email-запрос на поиск аналога.
+    Находит товар по артикулу.
+    1. Сначала ищет подтверждённый аналог в БД.
+    2. Если найден — возвращает его без отправки email.
+    3. Если не найден — отправляет Email-запрос поставщику.
     """
     price_obj = await price_service.get_price(db, art)
     if not price_obj:
         raise HTTPException(status_code=404, detail=f"Product with art {art} not found")
 
+    # --- ПРОВЕРКА БД АНАЛОГОВ ---
+    analogs = await analog_repo.get_all_for_product(db, art, price_obj.name)
+    confirmed = [a for a in analogs if a.status == "confirmed"]
+
+    if len(confirmed) == 1:
+        a = confirmed[0]
+        return {
+            "status": "analog_found",
+            "source": "db",
+            "analog_code": a.analog_product_code,
+            "analog_name": a.analog_product_name,
+            "analog_brand": a.analog_brand,
+            "confidence_level": a.confidence_level,
+        }
+
+    if len(confirmed) > 1:
+        return {
+            "status": "multiple_analogs",
+            "source": "db",
+            "analogs": [
+                {
+                    "analog_code": a.analog_product_code,
+                    "analog_name": a.analog_product_name,
+                    "analog_brand": a.analog_brand,
+                    "confidence_level": a.confidence_level,
+                }
+                for a in confirmed
+            ],
+        }
+
+    # --- АНАЛОГ НЕ НАЙДЕН → EMAIL ---
     auth = GraphAuth()
     client = OutlookClient(auth)
 
