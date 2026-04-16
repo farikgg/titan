@@ -1,7 +1,7 @@
 from decimal import Decimal
 
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy import String, Numeric, ForeignKey, UniqueConstraint
+from sqlalchemy import String, Numeric, ForeignKey, UniqueConstraint, Text, Float, Integer
 
 from src.db.initialize import Base
 
@@ -23,6 +23,12 @@ class OfferItemModel(Base):
     price: Mapped[Decimal] = mapped_column(Numeric(12, 2))
     quantity: Mapped[float | None] = mapped_column(Numeric(12, 3), nullable=True, default=1.0)
     total: Mapped[Decimal] = mapped_column(Numeric(12, 2))
+
+    # --- AI / Analog metadata ---
+    added_from: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    confidence_level: Mapped[float | None] = mapped_column(Float, nullable=True)
+    analog_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     offer = relationship("OfferModel", back_populates="items")
 

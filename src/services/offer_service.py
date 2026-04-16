@@ -321,6 +321,12 @@ class OfferService:
 
             current_name = price_obj.name if price_obj else name
             
+            # Метаданные для фронтенда
+            added_from = None
+            reason = None
+            confidence_level = None
+            analog_id = None
+
             if not found:
                 from src.repositories.analog_repo import AnalogRepository
                 analog_repo = AnalogRepository()
@@ -334,6 +340,9 @@ class OfferService:
                     sku = analog.analog_product_code
                     current_name = f"[АНАЛОГ ИЗ БД] {analog.analog_product_name or analog.analog_product_code}"
                     
+                    added_from = "db"
+                    analog_id = analog.id
+
                     # Устанавливаем цену аналога, если он есть в прайсах
                     price_obj = await self.db.scalar(
                         select(PriceModel).where(PriceModel.art == sku)
@@ -367,8 +376,9 @@ class OfferService:
                         )
                         
                         # Сохранять AI-найденный аналог в product_analogs со статусом new + added_from="ai"
+                        analog_obj = None
                         try:
-                            await analog_repo.create(
+                            analog_obj = await analog_repo.create(
                                 self.db,
                                 source_art=item_data.get("sku") or sku,
                                 analog_art=ai_result["analog_product_code"],
@@ -384,6 +394,12 @@ class OfferService:
                             )
                         except Exception as e:
                             logger.error("Failed to save AI analog to DB: %s", e)
+
+                        # Заполняем метаданные для позиции оффера
+                        added_from = "ai"
+                        reason = ai_result.get("reason")
+                        confidence_level = ai_result.get("score")
+                        analog_id = analog_obj.id if analog_obj else None
 
                         # Устанавливаем цену аналога, если он есть в прайсах
                         price_obj = await self.db.scalar(
@@ -410,6 +426,10 @@ class OfferService:
                 quantity=quantity,
                 unit=unit,
                 total=price * Decimal(str(quantity)),
+                added_from=added_from,
+                reason=reason,
+                confidence_level=confidence_level,
+                analog_id=analog_id,
             )
             self.db.add(item)
 
@@ -800,6 +820,16 @@ class OfferService:
         )
         items = items_result.scalars().all()
 
+        # Подгружаем статусы аналогов для фронтенда
+        analog_ids = [i.analog_id for i in items if i.analog_id]
+        analog_status_map = {}
+        if analog_ids:
+            from src.db.models.product_analog_model import ProductAnalogModel
+            analog_res = await self.db.execute(
+                select(ProductAnalogModel).where(ProductAnalogModel.id.in_(analog_ids))
+            )
+            analog_status_map = {a.id: a.status for a in analog_res.scalars().all()}
+
         return {
             "id": offer.id,
             "bitrix_deal_id": offer.bitrix_deal_id,
@@ -818,6 +848,11 @@ class OfferService:
                     "price": float(i.price),
                     "quantity": i.quantity,
                     "total": float(i.total),
+                    "added_from": i.added_from,
+                    "reason": i.reason,
+                    "confidence_level": i.confidence_level,
+                    "analog_id": i.analog_id,
+                    "analog_status": analog_status_map.get(i.analog_id) if i.analog_id else None,
                 }
                 for i in items
             ],
@@ -834,14 +869,22 @@ class OfferService:
         )
         items = result.scalars().all()
 
+        # Подгружаем статусы аналогов
+        analog_ids = [i.analog_id for i in items if i.analog_id]
+        analog_status_map = {}
+        if analog_ids:
+            from src.db.models.product_analog_model import ProductAnalogModel
+            analog_res = await self.db.execute(
+                select(ProductAnalogModel).where(ProductAnalogModel.id.in_(analog_ids))
+            )
+            analog_status_map = {a.id: a.status for a in analog_res.scalars().all()}
+
         return {
             "id": offer.id,
             "status": offer.status.value,
             "total": float(offer.total),
             "bitrix_deal_id": offer.bitrix_deal_id,
             "currency": offer.currency,
-            # Эти поля могут отсутствовать в старых версиях модели/миграций,
-            # поэтому берём их через getattr с дефолтом None.
             "payment_terms": getattr(offer, "payment_terms", None),
             "delivery_terms": getattr(offer, "delivery_terms", None),
             "warranty_terms": getattr(offer, "warranty_terms", None),
@@ -854,6 +897,11 @@ class OfferService:
                     "price": float(i.price),
                     "quantity": i.quantity,
                     "total": float(i.total),
+                    "added_from": i.added_from,
+                    "reason": i.reason,
+                    "confidence_level": i.confidence_level,
+                    "analog_id": i.analog_id,
+                    "analog_status": analog_status_map.get(i.analog_id) if i.analog_id else None,
                 }
                 for i in items
             ],

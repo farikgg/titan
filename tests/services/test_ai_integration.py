@@ -75,14 +75,31 @@ async def test_create_offer_with_ai_substitution(db: AsyncSession):
     assert "[АНАЛОГ ИИ]" in item.name
     assert item.price == Decimal("1500.00")
     assert item.total == Decimal("3000.00")
+    assert item.added_from == "ai"
+    assert item.reason == "AI matched it perfectly"
+    assert item.confidence_level == 0.95
+    assert item.analog_id is not None
 
-    # Проверяем, что в базе создалась запись об аналоге со статусом new и added_from=ai
-    stmt = select(ProductAnalogModel).where(ProductAnalogModel.source_product_code == "UNKNOWN-SRC-CODE")
-    result = await db.execute(stmt)
-    analog_link = result.scalar_one_or_none()
-    
-    assert analog_link is not None
-    assert analog_link.analog_product_code == "AI-ANALOG-001"
-    assert analog_link.status == "new"
-    assert analog_link.added_from == "ai"
-    assert analog_link.confidence_level == 0.95
+    # Проверяем ответ API (get_offer_with_items)
+    offer_data = await service.get_offer_with_items(offer.id)
+    api_item = offer_data["items"][0]
+    assert api_item["added_from"] == "ai"
+    assert api_item["reason"] == "AI matched it perfectly"
+    assert api_item["confidence_level"] == 0.95
+    assert api_item["analog_id"] == item.analog_id
+    assert api_item["analog_status"] == "new"
+
+    # 5. Проверяем обновление статуса после подтверждения
+    stmt_analog = select(ProductAnalogModel).where(ProductAnalogModel.id == item.analog_id)
+    analog_res = await db.execute(stmt_analog)
+    analog_obj = analog_res.scalar_one()
+    analog_obj.status = "confirmed"
+    await db.commit()
+
+    # Снова проверяем через API
+    offer_data_2 = await service.get_offer_with_items(offer.id)
+    assert offer_data_2["items"][0]["analog_status"] == "confirmed"
+
+    # Проверяем, что в базе есть запись об аналоге (старая проверка)
+    assert analog_obj.source_product_code == "UNKNOWN-SRC-CODE"
+    assert analog_obj.added_from == "ai"
