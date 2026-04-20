@@ -586,18 +586,18 @@ async def _generate_offer_pdf(offer_id: int, chat_id: int | None):
 
     async with async_session() as session:
 
-    offer = await session.get(OfferModel, offer_id)
-    await session.refresh(offer, ["items"])
+        offer = await session.get(OfferModel, offer_id)
+        await session.refresh(offer, ["items"])
 
-    # ВРЕМЕННЫЙ ЛОГ
-    logger.info("OFFER DATA: id=%s company=%s subject=%s items_count=%s",
-        offer.id,
-        getattr(offer, "client_company_name", "NOT_SET"),
-        getattr(offer, "subject", "NOT_SET"),
-        len(offer.items) if offer.items else 0,
-    )
-    for i in offer.items:
-        logger.info("ITEM: sku=%s name=%s qty=%s price=%s", i.sku, i.name, i.quantity, i.price)
+        # ВРЕМЕННЫЙ ЛОГ
+        logger.info("OFFER DATA: id=%s company=%s subject=%s items_count=%s",
+            offer.id,
+            getattr(offer, "client_company_name", "NOT_SET"),
+            getattr(offer, "subject", "NOT_SET"),
+            len(offer.items) if offer.items else 0,
+        )
+        for i in offer.items:
+            logger.info("ITEM: sku=%s name=%s qty=%s price=%s", i.sku, i.name, i.quantity, i.price)
 
         if not offer:
             # Если нет chat_id (админский вызов) — просто выходим тихо
