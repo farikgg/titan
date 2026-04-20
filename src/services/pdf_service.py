@@ -246,6 +246,8 @@ class PdfService:
             name = name.replace("[НЕ НАЙДЕН] ", "").strip()
             
             art = item.get("art") or ""
+            if art.startswith("NOT_FOUND"):
+                art = ""
             full_name = f"{name} ({art})" if art else name
 
             # Перевод ед. изм. (напр. piece -> шт.)

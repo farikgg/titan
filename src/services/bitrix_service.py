@@ -614,7 +614,8 @@ class BitrixService:
     async def get_company(self, company_id: int) -> Optional[Dict]:
         """Получает компанию по ID из Bitrix24."""
         try:
-            result = await self.bx.call(
+            result = await to_thread.run_sync(
+                self.bx.call,
                 "crm.company.get",
                 {"id": company_id},
             )

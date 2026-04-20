@@ -10,6 +10,9 @@ from src.services.offer_service import OfferService
 from src.core.auth import get_tg_user, get_tg_user_or_admin
 from src.worker.tasks import generate_offer_pdf_task
 from src.app.config import settings
+import logging
+
+logger = logging.getLogger(__name__)
 from src.core.bitrix import get_bitrix_client
 from src.services.bitrix_service import BitrixService
 from src.services.deal_service import DealService
@@ -59,11 +62,16 @@ async def create_draft(
         bitrix = BitrixService(bx)
 
         deal = await bitrix.get_deal(body.deal_id)
+        logger.info("DEAL: %s", deal)
+        
         if not deal:
             raise HTTPException(status_code=404, detail="Сделка не найдена в Bitrix")
 
         company_id = deal.get("COMPANY_ID")
+        logger.info("COMPANY_ID: %s", company_id)
+        
         company = await bitrix.get_company(int(company_id)) if company_id else {}
+        logger.info("COMPANY: %s", company)
 
         products = await bitrix.get_deal_products(body.deal_id)
 
@@ -382,6 +390,83 @@ async def update_terms(
         return {"status": "updated"}
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
+
+@router.post("/{offer_id}/request-analog")
+async def request_analog_for_offer(
+    offer_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: UserModel = Depends(get_tg_user_or_admin),
+):
+    """
+    Массово отправляет запрос на поиск аналога для всех ненайденных товаров в КП.
+    """
+    from sqlalchemy import select
+    from sqlalchemy.orm import selectinload
+    from src.db.models.offer_model import OfferModel
+    from src.integrations.azure.outlook_client import OutlookClient
+    from src.core.graph_auth import GraphAuth
+    
+    offer = await db.scalar(
+        select(OfferModel).options(selectinload(OfferModel.items)).filter(OfferModel.id == offer_id)
+    )
+    if not offer:
+        raise HTTPException(status_code=404, detail="Offer not found")
+
+    not_found_items = [item for item in offer.items if item.name and item.name.startswith("[НЕ НАЙДЕН]")]
+    
+    if not not_found_items:
+        return {"status": "no_items", "count": 0}
+
+    auth = GraphAuth()
+    client = OutlookClient(auth)
+    to_email = settings.ANALOG_REQUEST_RECIPIENT
+
+    success_count = 0
+    for item in not_found_items:
+        name = item.name.replace("[НЕ НАЙДЕН] ", "")
+        subject = f"Запрос аналога: {name} (art: {item.sku})"
+        deal_id_str = f"#{offer.bitrix_deal_id}" if offer.bitrix_deal_id else "---"
+        
+        body = f"""
+        <div style="font-family: Arial, sans-serif; max-width: 600px; border: 1px solid #eee; padding: 20px;">
+            <h2 style="color: #004a99; border-bottom: 2px solid #004a99; padding-bottom: 10px;">Запрос на поиск аналога (из КП)</h2>
+            <p>Приветствую, <b>Евгений</b>!</p>
+            <p>Требуется подобрать аналог для позиции из коммерческого предложения:</p>
+            
+            <table style="width: 100%; border-collapse: collapse; margin-top: 20px;">
+                <tr style="background-color: #f9f9f9;">
+                    <td style="padding: 10px; border: 1px solid #ddd;"><b>Товар:</b></td>
+                    <td style="padding: 10px; border: 1px solid #ddd;">{name}</td>
+                </tr>
+                <tr>
+                    <td style="padding: 10px; border: 1px solid #ddd;"><b>Артикул:</b></td>
+                    <td style="padding: 10px; border: 1px solid #ddd;"><code>{item.sku}</code></td>
+                </tr>
+                <tr style="background-color: #f9f9f9;">
+                    <td style="padding: 10px; border: 1px solid #ddd;"><b>Количество:</b></td>
+                    <td style="padding: 10px; border: 1px solid #ddd;">{item.quantity} {item.unit}</td>
+                </tr>
+                <tr>
+                    <td style="padding: 10px; border: 1px solid #ddd;"><b>ID Сделки:</b></td>
+                    <td style="padding: 10px; border: 1px solid #ddd;">{deal_id_str}</td>
+                </tr>
+            </table>
+            
+            <p style="margin-top: 25px; font-size: 0.9em; color: #666;">
+                Пожалуйста, проверьте наличие альтернатив и сообщите ответному менеджеру.
+            </p>
+            <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;"/>
+            <p style="font-size: 0.8em; color: #999;"><i>Отправлено автоматически из Titan Automation System</i></p>
+        </div>
+        """
+        try:
+            await client.send_email(to_email=to_email, subject=subject, body=body)
+            success_count += 1
+        except Exception as e:
+            logger.error(f"Failed to send analog request for offer {offer_id}, item {item.sku}: {e}")
+
+    return {"status": "sent", "count": success_count}
+
 
 
 @router.post("/{offer_id}/generate-pdf")

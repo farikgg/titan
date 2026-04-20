@@ -436,6 +436,55 @@ class OfferService:
         # Пересчитываем итог
         await self.recalc_total(offer.id)
 
+        # Telegram Notification
+        try:
+            from src.services.telegram_service import TelegramService, get_admin_chat_ids
+            from src.app.config import settings
+            import urllib.parse
+            import logging
+
+            tg = TelegramService()
+            chat_ids = get_admin_chat_ids()
+            if chat_ids:
+                deal_title = subject or f"Сделка #{deal_id}"
+                
+                lines = []
+                has_not_found = False
+                for item, item_model in zip(items, offer.items):
+                    name_orig = item.get("name", "Без названия")
+                    name = name_orig.replace("[НЕ НАЙДЕН] ", "")
+                    if name_orig.startswith("[НЕ НАЙДЕН]"):
+                        icon, suffix_text = "❌", "аналог не найден"
+                        has_not_found = True
+                    elif item_model.added_from in ("db", "ai"):
+                        icon, suffix_text = "⚠️", f"[{str(item_model.added_from).upper()} АНАЛОГ] найден"
+                    else:
+                        icon, suffix_text = "✅", "найден в каталоге"
+
+                    lines.append(f"{icon} {name} — {suffix_text}")
+                
+                items_str = "\n".join(lines)
+                text = f"📋 Новая сделка #{deal_id} — \"{deal_title}\"\n\nТовары:\n{items_str}"
+
+                domain = ""
+                if settings.BITRIX_WEBHOOK:
+                    parsed = urllib.parse.urlparse(settings.BITRIX_WEBHOOK)
+                    domain = parsed.netloc
+                bitrix_url = f"https://{domain}/crm/deal/details/{deal_id}/" if domain else ""
+
+                keyboard = {"inline_keyboard": [[]]}
+                url_btn = {"text": "📄 Открыть сделку", "url": bitrix_url} if bitrix_url else {"text": "📄 Открыть сделку", "callback_data": f"deal:{deal_id}"}
+                keyboard["inline_keyboard"][0].append(url_btn)
+
+                if has_not_found:
+                    keyboard["inline_keyboard"][0].append({"text": "✉️ Запросить у Fuchs", "callback_data": f"request_analog:{offer.id}"})
+                
+                for cid in chat_ids:
+                    await tg.send_message(chat_id=cid, text=text, keyboard=keyboard)
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).exception("Failed to send telegram notification for deal %s: %s", deal_id, e)
+
         await self._log(
             actor_type="system",
             action="create_offer_for_deal",
