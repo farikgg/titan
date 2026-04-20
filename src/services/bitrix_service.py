@@ -647,6 +647,43 @@ class BitrixService:
                 logger.exception("Bitrix: ошибка получения компании %s", company_id)
             return None
 
+    async def get_contact(self, contact_id: int) -> Optional[Dict]:
+        """Получает контакт по ID из Bitrix24."""
+        try:
+            result = await to_thread.run_sync(
+                self.bx.call,
+                "crm.contact.get",
+                {"id": contact_id},
+            )
+
+            # Обработка ответа аналогично get_company
+            if isinstance(result, dict):
+                if "result" in result:
+                    inner_result = result["result"]
+                    if isinstance(inner_result, dict):
+                        result = inner_result
+                    elif isinstance(inner_result, list):
+                        result = inner_result[0] if inner_result else None
+                elif "ID" in result:
+                    pass
+                elif len(result) == 1:
+                    only_value = next(iter(result.values()))
+                    if isinstance(only_value, dict) and "ID" in only_value:
+                        result = only_value
+
+            if isinstance(result, dict) and "ID" in result:
+                logger.info("Bitrix: получен контакт id=%s", contact_id)
+                return result
+            else:
+                logger.warning("Bitrix: контакт %s не найден или неверный формат ответа", contact_id)
+                return None
+        except Exception as e:
+            if self._is_unauthorized(e):
+                self._log_unauthorized("get_contact")
+            else:
+                logger.exception("Bitrix: ошибка получения контакта %s", contact_id)
+            return None
+
     async def search_companies(self, query: str, limit: int = 20) -> List[Dict]:
         """
         Поиск компаний в Bitrix24 по названию.

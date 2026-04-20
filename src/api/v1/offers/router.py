@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Request, Header
+from fastapi import APIRouter, Depends, HTTPException, Request, Header, Body
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Annotated
@@ -39,25 +39,57 @@ async def verify_user_or_admin_token(
     raise HTTPException(status_code=401, detail="Unauthorized: need Telegram init data or valid admin token")
 
 
+class DraftRequest(BaseModel):
+    deal_id: int | None = None
+
+
 @router.post("/draft")
 async def create_draft(
+    body: DraftRequest = Body(default_factory=DraftRequest),
     db: AsyncSession = Depends(get_db),
     user: UserModel = Depends(get_tg_user_or_admin),
 ):
-    """
-    Создаёт (или возвращает существующий) черновик КП.
-
-    Авторизация:
-      - через X-Telegram-Init-Data (TMA), или
-      - через admin token в заголовке `token`.
-
-    В варианте с admin token черновик создаётся на «системного» пользователя.
-    """
     service = OfferService(db)
-    # Для admin token у нас нет Telegram-пользователя, поэтому создаём
-    # черновик на условного системного user_id=1.
-    # В TMA по-прежнему используется get_or_create_draft по реальному user.id.
-    offer = await service.get_or_create_draft(user.id)
+
+    if body.deal_id:
+        from src.services.bitrix_service import BitrixService
+        from src.core.bitrix import get_bitrix_client
+
+        bx = get_bitrix_client()
+        bitrix = BitrixService(bx)
+
+        deal = await bitrix.get_deal(body.deal_id)
+        if not deal:
+            raise HTTPException(status_code=404, detail="Сделка не найдена в Bitrix")
+
+        company_id = deal.get("COMPANY_ID")
+        company = await bitrix.get_company(int(company_id)) if company_id else {}
+
+        products = await bitrix.get_deal_products(body.deal_id)
+
+        items = [
+            {
+                "sku": p.get("PRODUCT_ID") or "",
+                "name": p.get("PRODUCT_NAME", "Без названия"),
+                "price": float(p.get("PRICE", 0)),
+                "quantity": float(p.get("QUANTITY", 1)),
+                "unit": p.get("MEASURE_NAME", "шт"),
+                "found": True,
+            }
+            for p in products
+        ]
+
+        offer = await service.create_offer_for_deal(
+            deal_id=body.deal_id,
+            bitrix_user_id=int(deal.get("ASSIGNED_BY_ID", 1)),
+            items=items,
+            currency=deal.get("CURRENCY_ID", "KZT"),
+            client_company_name=company.get("TITLE") if company else None,
+            subject=deal.get("TITLE"),
+        )
+    else:
+        offer = await service.get_or_create_draft(user.id)
+
     await db.commit()
     return {"offer_id": offer.id}
 
