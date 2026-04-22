@@ -898,6 +898,14 @@ class OfferService:
             "warranty_terms": getattr(offer, "warranty_terms", None),
             "lead_time": getattr(offer, "lead_time", None),
             "vat_enabled": getattr(offer, "vat_enabled", None),
+            "client_company_name": getattr(offer, "client_company_name", None),
+            "client_address": getattr(offer, "client_address", None),
+            "subject": getattr(offer, "subject", None),
+            "manager_email": getattr(offer, "manager_email", None),
+            "client_email": getattr(offer, "client_email", None),
+            "incoterms": getattr(offer, "incoterms", None),
+            "deadline": getattr(offer, "deadline", None),
+            "delivery_place": getattr(offer, "delivery_place", None),
             "items": [
                 {
                     "sku": i.sku,
@@ -947,6 +955,14 @@ class OfferService:
             "warranty_terms": getattr(offer, "warranty_terms", None),
             "lead_time": getattr(offer, "lead_time", None),
             "vat_enabled": getattr(offer, "vat_enabled", None),
+            "client_company_name": getattr(offer, "client_company_name", None),
+            "client_address": getattr(offer, "client_address", None),
+            "subject": getattr(offer, "subject", None),
+            "manager_email": getattr(offer, "manager_email", None),
+            "client_email": getattr(offer, "client_email", None),
+            "incoterms": getattr(offer, "incoterms", None),
+            "deadline": getattr(offer, "deadline", None),
+            "delivery_place": getattr(offer, "delivery_place", None),
             "items": [
                 {
                     "sku": i.sku,
