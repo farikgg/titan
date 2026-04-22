@@ -287,6 +287,9 @@ class OfferService:
         if incoterms: offer.incoterms = incoterms
         if deadline: offer.deadline = deadline
         if delivery_place: offer.delivery_place = delivery_place
+        if client_company_name: offer.client_company_name = client_company_name
+        if client_address: offer.client_address = client_address
+        if subject: offer.subject = subject
 
         # Если есть заметки или даты, можем добавить их в конец условий или логировать
         if notes:
