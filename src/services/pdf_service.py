@@ -13,7 +13,7 @@ from datetime import datetime
 BASE_DIR = Path(__file__).resolve().parents[2]
 MEDIA_DIR = BASE_DIR / "media"
 FONTS_DIR = BASE_DIR / "fonts"
-LOGO_FILENAME = "titan_logo.png"  # файл логотипа, который нужно положить в папку media
+LOGO_FILENAME = "logo.jpg"  # файл логотипа, который нужно положить в папку media
 
 
 class PdfService:

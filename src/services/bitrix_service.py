@@ -614,11 +614,13 @@ class BitrixService:
     async def get_company(self, company_id: int) -> Optional[Dict]:
         """Получает компанию по ID из Bitrix24."""
         try:
+            logger.info("Bitrix: запрашиваю компанию id=%s", company_id)
             result = await to_thread.run_sync(
                 self.bx.call,
                 "crm.company.get",
                 {"id": company_id},
             )
+            logger.info("Bitrix: raw company response: %s", result)
             
             # Обработка ответа аналогично get_deal
             if isinstance(result, dict):
