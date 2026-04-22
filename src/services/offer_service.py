@@ -449,7 +449,7 @@ class OfferService:
                 deal_title = subject or f"Сделка #{deal_id}"
                 
                 # Fetch items explicitly to avoid greenlet_spawn error on lazy local load
-                from src.db.models.offer_item_model import OfferItemModel
+                
                 res = await self.db.execute(select(OfferItemModel).where(OfferItemModel.offer_id == offer.id))
                 offer_items_loaded = res.scalars().all()
 
