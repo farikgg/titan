@@ -174,7 +174,7 @@ class FuchsAIParser:
                             )
 
                 elif name.endswith((".xls", ".xlsx")):
-                    sheets = pd.read_excel(BytesIO(content), sheet_name=None)
+                    sheets = pd.read_excel(BytesIO(content), sheet_name=None, engine='xlrd')
                     for sheet_name, df in sheets.items():
                         file_text += f"\n[SHEET: {sheet_name}]\n"
                         file_text += df.to_csv(sep=";", index=False)
