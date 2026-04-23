@@ -149,7 +149,8 @@ class FuchsAIParser:
                                 file_text += text + "\n"
 
                 elif name.endswith(".xlsx"):
-                    sheets = pd.read_excel(BytesIO(content), sheet_name=None)
+                    sheets = pd.read_excel(BytesIO(content), sheet_name=None, engine='xlrd')
+
                     for sheet_name, df in sheets.items():
                         df = df.rename(str.lower, axis=1)
 
