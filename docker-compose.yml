@@ -24,9 +24,9 @@ services:
     deploy:
       resources:
         limits:
-          memory: 1G      # Даем до 1 Гигабайта при пиковых нагрузках (Парсинг Excel)
+          memory: 1G # Даем до 1 Гигабайта при пиковых нагрузках (Парсинг Excel)
         reservations:
-          memory: 256M    # Базовая память
+          memory: 256M # Базовая память
 
   # ── Celery Beat (планировщик) ──
   beat:
@@ -47,14 +47,14 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     restart: unless-stopped
 
   # ── Redis ──
   redis:
     image: redis:7-alpine
-#    ports:
-#      - "6379:6379"
+    #    ports:
+    #      - "6379:6379"
     restart: unless-stopped
 
 volumes:
