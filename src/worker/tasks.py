@@ -346,7 +346,6 @@ def requests_process(self, msg_dict):
             is_analog_reply = False
             async with async_session() as session_check:
                 if conversation_id:
-                    from sqlalchemy import select
                     from src.db.models.analog_request_model import AnalogRequestModel
                     req = await session_check.scalar(
                         select(AnalogRequestModel).where(AnalogRequestModel.email_thread_id == conversation_id)
