@@ -1,7 +1,8 @@
 from src.repositories.price_repo import PriceRepository
 from src.services.price_service import PriceService, PriceCreate
 from src.services.fuchs_parser import FuchsAIParser
-from src.services.excel_parser import FuchsExcelParser
+from src.services.excel_parser import FuchsExcelParser, FuchsAnalogExcelParser
+from src.repositories.analog_repo import AnalogRepository
 from src.services.telegram_service import TelegramService, get_admin_chat_ids
 from src.services.deal_service import DealService
 from src.services.bitrix_service import BitrixService
@@ -162,6 +163,38 @@ async def process_fuchs_message(msg_dict: dict) -> str:
             i, vi.art, vi.name, vi.price, vi.currency,
             vi.container_size, vi.container_unit,
         )
+
+    # -------- АНАЛОГИ ИЗ EXCEL --------
+    analog_excel_parser = FuchsAnalogExcelParser()
+    analog_repo = AnalogRepository()
+    analog_pairs: list[dict] = []
+    for att in attachments:
+        if att["name"].lower().endswith((".xls", ".xlsx")):
+            pairs = analog_excel_parser.parse(att["content"])
+            if pairs:
+                analog_pairs.extend(pairs)
+                logger.info("Найдено аналогов в %s: %d", att["name"], len(pairs))
+    if analog_pairs:
+        try:
+            async with async_session() as session:
+                for pair in analog_pairs:
+                    await analog_repo.create(
+                        session,
+                        source_art=pair["source_code"] or pair["source_name"],
+                        source_product_name=pair["source_name"],
+                        analog_art=pair["analog_art"],
+                        analog_name=pair["analog_name"],
+                        analog_brand=pair["analog_brand"],
+                        analog_source="FUCHS",
+                        confidence_level=0.85,
+                        status="new",
+                        email_thread_id=message_id,
+                        added_from="email",
+                    )
+                await session.commit()
+                logger.info("Сохранено аналогов: %d", len(analog_pairs))
+        except Exception as e:
+            logger.error("Ошибка сохранения аналогов: %s", e, exc_info=True)
 
     # -------- DB SAVE (atomic) --------
     try:

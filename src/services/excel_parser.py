@@ -140,3 +140,91 @@ class FuchsExcelParser:
         return items
 
 
+class FuchsAnalogExcelParser:
+    """
+    Парсит Excel файлы от Fuchs с аналогами.
+    Формат A: col[1]=исходный товар, col[5]/col[7]=артикул+название аналога
+    Формат B: col[0]=исходный товар, col[1]=артикул Fuchs (6-9 цифр), col[2]=название аналога
+    Возвращает список dict: {source_name, source_code, analog_art, analog_name, analog_brand}
+    """
+
+    def parse(self, content: bytes) -> list[dict]:
+        import logging
+        _logger = logging.getLogger(__name__)
+        results = []
+        try:
+            xl = pd.ExcelFile(BytesIO(content))
+        except Exception as e:
+            _logger.warning("Ошибка чтения Excel аналогов: %s", e)
+            return []
+
+        for sheet_name in xl.sheet_names:
+            try:
+                df = pd.read_excel(xl, sheet_name=sheet_name, header=None)
+            except Exception:
+                continue
+            if df.empty or len(df.columns) < 2:
+                continue
+            parsed = self._try_format_b(df)
+            if not parsed:
+                parsed = self._try_format_a(df)
+            results.extend(parsed)
+
+        return results
+
+    def _try_format_b(self, df: pd.DataFrame) -> list[dict]:
+        """col[0]=исходный товар, col[1]=артикул Fuchs (6-9 цифр), col[2]=название"""
+        col_b = df.iloc[:, 1]
+        numeric_count = sum(1 for v in col_b.dropna() if re.match(r'^\d{6,9}$', str(v).strip()))
+        if numeric_count < 2:
+            return []
+
+        items = []
+        col_c = df.iloc[:, 2] if len(df.columns) > 2 else None
+        for i, row in df.iterrows():
+            source_name = str(row.iloc[0]).strip()
+            analog_art = str(row.iloc[1]).strip()
+            if not source_name or source_name.lower() in ("nan", "none", ""):
+                continue
+            if not re.match(r'^\d{6,9}$', analog_art):
+                continue
+            analog_name = str(col_c.iloc[i]).strip() if col_c is not None else ""
+            if analog_name.lower() in ("nan", "none", ""):
+                analog_name = None
+            items.append({
+                "source_name": source_name,
+                "source_code": None,
+                "analog_art": analog_art,
+                "analog_name": analog_name,
+                "analog_brand": "FUCHS",
+            })
+        return items
+
+    def _try_format_a(self, df: pd.DataFrame) -> list[dict]:
+        """col[1]=исходный товар, col[5] и col[7]=артикул+название аналога"""
+        if len(df.columns) < 6:
+            return []
+        items = []
+        for _, row in df.iterrows():
+            source_name = str(row.iloc[1]).strip() if len(row) > 1 else ""
+            if not source_name or source_name.lower() in ("nan", "none", ""):
+                continue
+            for col_idx in [5, 7]:
+                if col_idx >= len(row):
+                    continue
+                cell = str(row.iloc[col_idx]).strip()
+                if not cell or cell.lower() in ("nan", "none"):
+                    continue
+                art_match = re.search(r'\b(\d{6,9})\b', cell)
+                if not art_match:
+                    continue
+                analog_art = art_match.group(1)
+                analog_name = cell.replace(analog_art, "").strip() or None
+                items.append({
+                    "source_name": source_name,
+                    "source_code": None,
+                    "analog_art": analog_art,
+                    "analog_name": analog_name,
+                    "analog_brand": "FUCHS",
+                })
+        return items
