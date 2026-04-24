@@ -153,17 +153,6 @@ async def process_fuchs_message(msg_dict: dict) -> str:
         len(valid_items),
     )
 
-    if not valid_items:
-        logger.info("AI returned items without prices, skipping save")
-        return "No priced data"
-
-    for i, vi in enumerate(valid_items):
-        logger.info(
-            "  [%d] art=%s name=%s price=%s currency=%s container=%s %s",
-            i, vi.art, vi.name, vi.price, vi.currency,
-            vi.container_size, vi.container_unit,
-        )
-
     # -------- АНАЛОГИ ИЗ EXCEL --------
     analog_excel_parser = FuchsAnalogExcelParser()
     analog_repo = AnalogRepository()
@@ -175,9 +164,10 @@ async def process_fuchs_message(msg_dict: dict) -> str:
                 analog_pairs.extend(pairs)
                 logger.info("Найдено аналогов в %s: %d", att["name"], len(pairs))
     if analog_pairs:
-        try:
-            async with async_session() as session:
-                for pair in analog_pairs:
+        saved = 0
+        for pair in analog_pairs:
+            try:
+                async with async_session() as session:
                     await analog_repo.create(
                         session,
                         source_art=pair["source_code"] or pair["source_name"],
@@ -191,10 +181,22 @@ async def process_fuchs_message(msg_dict: dict) -> str:
                         email_thread_id=message_id,
                         added_from="email",
                     )
-                await session.commit()
-                logger.info("Сохранено аналогов: %d", len(analog_pairs))
-        except Exception as e:
-            logger.error("Ошибка сохранения аналогов: %s", e, exc_info=True)
+                    await session.commit()
+                    saved += 1
+            except Exception:
+                pass  # duplicate or other error — skip
+        logger.info("Сохранено аналогов: %d / %d", saved, len(analog_pairs))
+
+    if not valid_items:
+        logger.info("AI returned items without prices, skipping save")
+        return "No priced data"
+
+    for i, vi in enumerate(valid_items):
+        logger.info(
+            "  [%d] art=%s name=%s price=%s currency=%s container=%s %s",
+            i, vi.art, vi.name, vi.price, vi.currency,
+            vi.container_size, vi.container_unit,
+        )
 
     # -------- DB SAVE (atomic) --------
     try:
