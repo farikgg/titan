@@ -75,3 +75,15 @@ async def confirm_analog(
     
     await db.commit()
     return {"status": "success", "analog_id": analog.id}
+
+
+@router.get("/new", response_model=List[AnalogSearchResponse])
+async def get_new_analogs(
+    db: AsyncSession = Depends(get_db),
+    user: UserModel = Depends(get_tg_user_or_admin),
+):
+    """Возвращает список спарсенных аналогов со статусом 'new', ожидающих подтверждения"""
+    result = await db.execute(
+        select(ProductAnalogModel).where(ProductAnalogModel.status == "new")
+    )
+    return result.scalars().all()
